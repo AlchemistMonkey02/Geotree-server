@@ -1,92 +1,108 @@
 const mongoose = require('mongoose');
 
 const individualPlantationSchema = new mongoose.Schema({
-    userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
-    },
-    plantName: {
+    treeType: {
         type: String,
-        required: true
+        required: [true, 'Tree type is required']
     },
     height: {
         type: Number,
-        required: true
+        required: [true, 'Tree height is required']
     },
-    areaType: {
-        type: String,
-        required: true,
-        enum: ['Private', 'Public', 'School', 'Temple', 'Other']
+    state: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'State',
+        required: [true, 'State is required']
     },
-    event: {
-        type: String,
-        required: true
+    district: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'District',
+        required: [true, 'District is required']
     },
-    userName: {
-        type: String,
-        required: true
+    village: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Village',
+        required: [true, 'Village is required']
     },
-    userMobile: {
-        type: String,
-        required: true
+    gramPanchayat: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'GramPanchayat',
+        required: [true, 'Gram Panchayat is required']
     },
-    plantedDate: {
-        type: Date,
-        default: Date.now
-    },
-    prePlantationImage: {
-        filename: String,
-        path: String,
-        mimetype: String,
-        size: Number
-    },
-    plantationImage: {
-        filename: String,
-        path: String,
-        mimetype: String,
-        size: Number
+    landOwnership: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'LandOwnership',
+        required: [true, 'Land ownership details are required']
     },
     location: {
         type: {
             type: String,
             enum: ['Point'],
-            required: true
+            default: 'Point'
         },
         coordinates: {
             type: [Number],
-            required: true
+            required: [true, 'Coordinates are required']
         }
     },
-    userIp: String,
-    userLocation: String,
-    latitude: Number,
-    longitude: Number,
-    district: String,
-    gpName: String,
-    categoryId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'TreeCategory',
-        required: true
+    plantationDate: {
+        type: Date,
+        required: [true, 'Plantation date is required']
     },
-    eventId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Event'
+    contactNumber: {
+        type: String,
+        required: [true, 'Contact number is required'],
+        match: [/^[0-9]{10}$/, 'Please provide a valid 10-digit contact number']
     },
-    campaignId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Campaign'
+    email: {
+        type: String,
+        required: [true, 'Email is required'],
+        match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please provide a valid email']
     },
+    photos: [{
+        url: {
+            type: String,
+            required: true
+        },
+        caption: String,
+        uploadDate: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+    status: {
+        type: String,
+        enum: ['PENDING', 'VERIFIED', 'REJECTED'],
+        default: 'PENDING'
+    },
+    verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    verificationDate: Date,
+    verificationComments: String,
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
+    },
+    updatedAt: {
+        type: Date,
+        default: Date.now
     }
-}, {
-    timestamps: true
 });
 
-// Create a 2dsphere index for location-based queries
+// Update timestamp before saving
+individualPlantationSchema.pre('save', function(next) {
+    this.updatedAt = Date.now();
+    next();
+});
+
+// Geospatial index for location queries
 individualPlantationSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.model('IndividualPlantation', individualPlantationSchema); 

@@ -57,7 +57,21 @@ exports.exportActivities = async (req, res) => {
 
 // 📌 Get all activities with pagination
 exports.getAllActivities = async (req, res) => {
-    let { page = 1, limit = 10, event, startDate, endDate, categoryId, campaignId, latMin, latMax, longMin, longMax, sort } = req.query;
+    let { 
+        page = 1, 
+        limit = 10, 
+        event, 
+        startDate, 
+        endDate, 
+        categoryId, 
+        campaignId, 
+        latMin, 
+        latMax, 
+        longMin, 
+        longMax, 
+        sort,
+        plantationType // Added to filter by plantation type
+    } = req.query;
 
     const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
     const parsedLimit = Math.max(parseInt(limit, 10) || 10, 1);
@@ -76,9 +90,14 @@ exports.getAllActivities = async (req, res) => {
             return res.status(403).json({ message: 'Access denied' });
         }
 
-        // 📌 Apply Filters
+        // 📌 Apply Common Filters
         if (event) query.event = new RegExp(event, 'i');
-        if (startDate && endDate) query.plantedDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+        if (startDate && endDate) {
+            query.createdAt = { 
+                $gte: new Date(startDate), 
+                $lte: new Date(endDate) 
+            };
+        }
         if (categoryId) query.categoryId = categoryId;
         if (campaignId) query.campaignId = campaignId;
 
@@ -94,153 +113,227 @@ exports.getAllActivities = async (req, res) => {
             };
         }
 
-        // 📌 Sorting Options
-        if (sort === "oldest") sortOption = { createdAt: 1 };
-        if (sort === "height_desc") sortOption = { height: -1 };
-        if (sort === "height_asc") sortOption = { height: 1 };
+        // 📌 Apply Sorting
+        switch(sort) {
+            case "oldest":
+                sortOption = { createdAt: 1 };
+                break;
+            case "height_desc":
+                sortOption = { height: -1 };
+                break;
+            case "height_asc":
+                sortOption = { height: 1 };
+                break;
+            default:
+                sortOption = { createdAt: -1 };
+        }
 
-        // Fetch activities from both tables with sorting & pagination
-        const [individualActivities, blockActivities, totalIndividual, totalBlock] = await Promise.all([
-            IndividualPlantation.find(query)
-                .populate('userId', 'firstName lastName city')
-                .sort(sortOption)
-                .skip((parsedPage - 1) * parsedLimit)
-                .limit(parsedLimit),
-            
-            BlockPlantation.find(query)
-                .populate('userId', 'firstName lastName city')
-                .sort(sortOption)
-                .skip((parsedPage - 1) * parsedLimit)
-                .limit(parsedLimit),
+        // 📌 Calculate skip value for pagination
+        const skip = (parsedPage - 1) * parsedLimit;
 
-            IndividualPlantation.countDocuments(query),
-            BlockPlantation.countDocuments(query),
+        // 📌 Aggregate Pipeline for Both Collections
+        const aggregatePipeline = [
+            { $match: query },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'userId',
+                    foreignField: '_id',
+                    as: 'userDetails'
+                }
+            },
+            { $unwind: '$userDetails' },
+            {
+                $project: {
+                    _id: 1,
+                    plantationType: 1,
+                    plantName: 1,
+                    height: 1,
+                    area: 1,
+                    location: 1,
+                    createdAt: 1,
+                    event: 1,
+                    categoryId: 1,
+                    campaignId: 1,
+                    plantationImage: 1,
+                    prePlantationImage: 1,
+                    userName: '$userDetails.firstName',
+                    userLastName: '$userDetails.lastName',
+                    userCity: '$userDetails.city',
+                    plantationType: {
+                        $cond: {
+                            if: { $eq: ['$collectionType', 'individual'] },
+                            then: 'Individual',
+                            else: 'Block'
+                        }
+                    }
+                }
+            },
+            { $sort: sortOption }
+        ];
+
+        // 📌 Execute Queries for Both Collections
+        const [individualResults, blockResults] = await Promise.all([
+            IndividualPlantation.aggregate([
+                {
+                    $addFields: {
+                        collectionType: 'individual'
+                    }
+                },
+                ...aggregatePipeline
+            ]),
+            BlockPlantation.aggregate([
+                {
+                    $addFields: {
+                        collectionType: 'block'
+                    }
+                },
+                ...aggregatePipeline
+            ])
         ]);
 
-        let allActivities = [...individualActivities, ...blockActivities];
-        allActivities.sort((a, b) => b.createdAt - a.createdAt); // Ensure correct order
+        // 📌 Combine and Sort Results
+        let allActivities = [...individualResults, ...blockResults]
+            .sort((a, b) => {
+                // Apply the same sorting as specified in sortOption
+                if (sort === 'oldest') return a.createdAt - b.createdAt;
+                if (sort === 'height_desc') return b.height - a.height;
+                if (sort === 'height_asc') return a.height - b.height;
+                return b.createdAt - a.createdAt; // default newest first
+            });
 
-        // 📌 Return Paginated Results
+        // 📌 Apply Plantation Type Filter if specified
+        if (plantationType) {
+            allActivities = allActivities.filter(activity => 
+                activity.plantationType.toLowerCase() === plantationType.toLowerCase()
+            );
+        }
+
+        // 📌 Calculate Total Count
+        const totalActivities = allActivities.length;
+
+        // 📌 Apply Pagination
+        const paginatedActivities = allActivities.slice(skip, skip + parsedLimit);
+
+        // 📌 Return Paginated Results with Enhanced Metadata
         res.status(200).json({
-            activities: allActivities,
-            totalActivities: totalIndividual + totalBlock,
-            totalPages: Math.ceil((totalIndividual + totalBlock) / parsedLimit),
-            currentPage: parsedPage,
-            perPage: parsedLimit,
+            success: true,
+            data: {
+                activities: paginatedActivities,
+                pagination: {
+                    totalActivities,
+                    totalPages: Math.ceil(totalActivities / parsedLimit),
+                    currentPage: parsedPage,
+                    perPage: parsedLimit,
+                    hasNextPage: skip + parsedLimit < totalActivities,
+                    hasPreviousPage: parsedPage > 1
+                },
+                summary: {
+                    individualCount: individualResults.length,
+                    blockCount: blockResults.length,
+                    totalCount: totalActivities
+                }
+            }
         });
+
     } catch (error) {
         console.error('Error fetching activities:', error);
-        res.status(500).json({ message: 'Error fetching activities', error: error.message });
+        res.status(500).json({ 
+            success: false,
+            message: 'Error fetching activities', 
+            error: error.message 
+        });
     }
 };
 
 // 📌 Create Block Plantation
 exports.createBlockPlantation = async (req, res) => {
     try {
-        console.log("📥 Received Body:", req.body);
-        console.log("📸 Received Files:", req.files);
-
-        // ✅ Validate Image Uploads
-        if (!req.files || !req.files.prePlantationImage || !req.files.plantationImage) {
-            return res.status(400).json({ 
+        // ✅ 1. Validate Request Body and Files
+        const validationResult = await validatePlantationRequest(req);
+        if (!validationResult.isValid) {
+            return res.status(400).json({
                 success: false,
-                message: 'Both prePlantationImage and plantationImage are required!' 
+                message: validationResult.message,
+                errors: validationResult.errors
             });
         }
 
-        // ✅ Extract required fields from request body
         const {
-            plantationType, areaType, area, location, boundaryPoints, userMobile, userName, plantName,
-            height, event, userIp, userLocation, latitude, longitude, district, gpName,
-            eventId, campaignId, categoryId
+            plantationType,
+            areaType,
+            area,
+            location,
+            boundaryPoints,
+            userMobile,
+            userName,
+            plantName,
+            height,
+            event,
+            userIp,
+            userLocation,
+            latitude,
+            longitude,
+            district,
+            gpName,
+            eventId,
+            campaignId,
+            categoryId,
+            numberOfTrees, // Added field for number of trees
+            soilType,     // Added field for soil type
+            waterSource,  // Added field for water source
+            remarks      // Added field for additional remarks
         } = req.body;
 
-        const requiredFields = [
-            'plantationType', 'areaType', 'area', 'location', 'boundaryPoints', 'userMobile', 'userName',
-            'plantName', 'height', 'event', 'userIp', 'userLocation', 'latitude', 'longitude',
-            'district', 'gpName', 'categoryId'
-        ];
-
-        // ✅ Check for missing fields
-        const missingFields = requiredFields.filter(field => !req.body[field]);
-        if (missingFields.length > 0) {
-            return res.status(400).json({ 
+        // ✅ 2. Process and Validate Location Data
+        const locationData = await processLocationData(location, boundaryPoints, latitude, longitude);
+        if (!locationData.success) {
+            return res.status(400).json({
                 success: false,
-                message: `Missing fields: ${missingFields.join(', ')}` 
+                message: 'Invalid location data',
+                errors: locationData.errors
             });
         }
 
-        // ✅ Check if user is registered
-        const user = await checkUserRegistered(userMobile);
+        // ✅ 3. Validate User and Get User Details
+        const user = await User.findOne({ mobile: userMobile });
         if (!user) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 success: false,
-                message: 'User not registered! Please register first.' 
+                message: 'User not registered! Please register first.'
             });
         }
 
-        // ✅ Parse `location` and `boundaryPoints`
-        let parsedLocation, parsedBoundaryPoints;
-        try {
-            parsedLocation = typeof location === 'string' ? JSON.parse(location) : location;
-            parsedBoundaryPoints = typeof boundaryPoints === 'string' ? JSON.parse(boundaryPoints) : boundaryPoints;
-        } catch (error) {
-            return res.status(400).json({ 
+        // ✅ 4. Validate References (Event, Campaign, Category)
+        const validationErrors = await validateReferences(eventId, campaignId, categoryId);
+        if (validationErrors.length > 0) {
+            return res.status(400).json({
                 success: false,
-                message: 'Invalid JSON format in location or boundaryPoints!', 
-                error: error.message 
+                message: 'Reference validation failed',
+                errors: validationErrors
             });
         }
 
-        // ✅ Validate Plantation Type
-        const allowedPlantationTypes = ['Teak', 'Bamboo', 'Neem', 'Mahogany'];
-        if (!allowedPlantationTypes.includes(plantationType)) {
-            return res.status(400).json({ 
+        // ✅ 5. Process Images
+        const imageProcessingResult = await processPlantationImages(req.files);
+        if (!imageProcessingResult.success) {
+            return res.status(400).json({
                 success: false,
-                message: 'Invalid plantation type!' 
+                message: 'Image processing failed',
+                errors: imageProcessingResult.errors
             });
         }
 
-        // ✅ Validate `eventId`, `campaignId`, and `categoryId`
-        if (eventId && !(await Event.findById(eventId))) {
-            return res.status(400).json({ 
-                success: false,
-                message: `Event not found with ID: ${eventId}` 
-            });
-        }
-        if (campaignId && !(await Campaign.findById(campaignId))) {
-            return res.status(400).json({ 
-                success: false,
-                message: `Campaign not found with ID: ${campaignId}` 
-            });
-        }
-        if (!(await TreeCategory.findById(categoryId))) {
-            return res.status(400).json({ 
-                success: false,
-                message: `Tree category not found with ID: ${categoryId}` 
-            });
-        }
-
-        // ✅ Create new Plantation Entry
-        const newPlantation = new BlockPlantation({
+        // ✅ 6. Create Block Plantation Entry
+        const blockPlantation = new BlockPlantation({
             userId: user._id,
             plantationType,
             areaType,
             area: parseFloat(area),
-            location: parsedLocation,
-            boundaryPoints: parsedBoundaryPoints,
-            prePlantationImage: {
-                filename: req.files.prePlantationImage[0].filename,
-                path: req.files.prePlantationImage[0].path,
-                mimetype: req.files.prePlantationImage[0].mimetype,
-                size: req.files.prePlantationImage[0].size
-            },
-            plantationImage: {
-                filename: req.files.plantationImage[0].filename,
-                path: req.files.plantationImage[0].path,
-                mimetype: req.files.plantationImage[0].mimetype,
-                size: req.files.plantationImage[0].size
-            },
+            location: locationData.processedLocation,
+            boundaryPoints: locationData.processedBoundaryPoints,
+            prePlantationImage: imageProcessingResult.prePlantationImage,
+            plantationImage: imageProcessingResult.plantationImage,
             userMobile,
             userName,
             plantName,
@@ -248,59 +341,220 @@ exports.createBlockPlantation = async (req, res) => {
             event,
             userIp,
             userLocation,
-            latitude: parseFloat(latitude),
-            longitude: parseFloat(longitude),
             district,
             gpName,
             categoryId,
             campaignId: campaignId || null,
             eventId: eventId || null,
-            createdBy: user._id
+            numberOfTrees: parseInt(numberOfTrees) || 0,
+            soilType: soilType || 'Not Specified',
+            waterSource: waterSource || 'Not Specified',
+            remarks: remarks || '',
+            status: 'active',
+            createdBy: user._id,
+            metadata: {
+                deviceInfo: req.headers['user-agent'],
+                ipAddress: req.ip,
+                timestamp: new Date()
+            }
         });
 
-        await newPlantation.save();
+        await blockPlantation.save();
 
-        // ✅ Create Activity Log
+        // ✅ 7. Create Activity Log
         const activity = new Activity({
             userId: user._id,
-            plantName,
-            height: parseFloat(height),
-            areaType,
-            event,
-            area: parseFloat(area),
-            userName,
-            userMobile,
-            prePlantationImage: req.files.prePlantationImage[0].path,
-            plantationImage: req.files.plantationImage[0].path,
-            location: {
-                type: "Point",
-                coordinates: [parseFloat(longitude), parseFloat(latitude)]
+            activityType: 'BLOCK_PLANTATION',
+            details: {
+                plantationId: blockPlantation._id,
+                plantName,
+                area: parseFloat(area),
+                numberOfTrees: parseInt(numberOfTrees) || 0,
+                location: locationData.processedLocation
             },
-            categoryId,
-            eventId: eventId || null,
-            campaignId: campaignId || null
+            metadata: {
+                eventId: eventId || null,
+                campaignId: campaignId || null,
+                categoryId
+            }
         });
 
         await activity.save();
 
+        // ✅ 8. Update User Statistics
+        await User.findByIdAndUpdate(user._id, {
+            $inc: {
+                'statistics.totalPlantations': 1,
+                'statistics.totalTrees': parseInt(numberOfTrees) || 0,
+                'statistics.totalArea': parseFloat(area)
+            }
+        });
+
+        // ✅ 9. Send Success Response
         res.status(201).json({
             success: true,
             message: 'Block plantation created successfully',
             data: {
-                plantation: newPlantation,
-                activity
+                plantation: blockPlantation,
+                activity: activity
             }
         });
 
     } catch (error) {
         console.error('❌ Error creating block plantation:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
-            message: 'Error creating block plantation', 
-            error: error.message 
+            message: 'Error creating block plantation',
+            error: error.message
         });
     }
 };
+
+// Helper Functions
+
+async function validatePlantationRequest(req) {
+    const requiredFields = [
+        'plantationType',
+        'areaType',
+        'area',
+        'location',
+        'boundaryPoints',
+        'userMobile',
+        'userName',
+        'plantName',
+        'height',
+        'event',
+        'userIp',
+        'userLocation',
+        'latitude',
+        'longitude',
+        'district',
+        'gpName',
+        'categoryId'
+    ];
+
+    const errors = [];
+
+    // Check required fields
+    for (const field of requiredFields) {
+        if (!req.body[field]) {
+            errors.push(`${field} is required`);
+        }
+    }
+
+    // Validate files
+    if (!req.files?.prePlantationImage?.[0] || !req.files?.plantationImage?.[0]) {
+        errors.push('Both pre-plantation and plantation images are required');
+    }
+
+    // Validate numeric fields
+    if (isNaN(parseFloat(req.body.area)) || parseFloat(req.body.area) <= 0) {
+        errors.push('Area must be a positive number');
+    }
+    if (isNaN(parseFloat(req.body.height)) || parseFloat(req.body.height) <= 0) {
+        errors.push('Height must be a positive number');
+    }
+
+    return {
+        isValid: errors.length === 0,
+        message: errors.length > 0 ? 'Validation failed' : 'Validation successful',
+        errors
+    };
+}
+
+async function processLocationData(location, boundaryPoints, latitude, longitude) {
+    try {
+        const processedLocation = {
+            type: 'Point',
+            coordinates: [parseFloat(longitude), parseFloat(latitude)]
+        };
+
+        let processedBoundaryPoints;
+        try {
+            processedBoundaryPoints = typeof boundaryPoints === 'string' 
+                ? JSON.parse(boundaryPoints) 
+                : boundaryPoints;
+        } catch (error) {
+            return {
+                success: false,
+                errors: ['Invalid boundary points format']
+            };
+        }
+
+        // Validate coordinates
+        if (!isValidCoordinates(latitude, longitude)) {
+            return {
+                success: false,
+                errors: ['Invalid coordinates']
+            };
+        }
+
+        return {
+            success: true,
+            processedLocation,
+            processedBoundaryPoints
+        };
+    } catch (error) {
+        return {
+            success: false,
+            errors: ['Error processing location data']
+        };
+    }
+}
+
+async function validateReferences(eventId, campaignId, categoryId) {
+    const errors = [];
+
+    if (eventId) {
+        const event = await Event.findById(eventId);
+        if (!event) errors.push(`Event not found with ID: ${eventId}`);
+    }
+
+    if (campaignId) {
+        const campaign = await Campaign.findById(campaignId);
+        if (!campaign) errors.push(`Campaign not found with ID: ${campaignId}`);
+    }
+
+    if (categoryId) {
+        const category = await TreeCategory.findById(categoryId);
+        if (!category) errors.push(`Tree category not found with ID: ${categoryId}`);
+    }
+
+    return errors;
+}
+
+async function processPlantationImages(files) {
+    if (!files?.prePlantationImage?.[0] || !files?.plantationImage?.[0]) {
+        return {
+            success: false,
+            errors: ['Missing required images']
+        };
+    }
+
+    return {
+        success: true,
+        prePlantationImage: {
+            filename: files.prePlantationImage[0].filename,
+            path: files.prePlantationImage[0].path,
+            mimetype: files.prePlantationImage[0].mimetype,
+            size: files.prePlantationImage[0].size
+        },
+        plantationImage: {
+            filename: files.plantationImage[0].filename,
+            path: files.plantationImage[0].path,
+            mimetype: files.plantationImage[0].mimetype,
+            size: files.plantationImage[0].size
+        }
+    };
+}
+
+function isValidCoordinates(latitude, longitude) {
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    return !isNaN(lat) && !isNaN(lng) && 
+           lat >= -90 && lat <= 90 && 
+           lng >= -180 && lng <= 180;
+}
 
 exports.getActivityAnalytics = async (req, res) => {
     try {

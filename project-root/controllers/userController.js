@@ -3,77 +3,157 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const passport = require('passport');  // ✅ Added missing passport import
+const passport = require('passport');
 const { saveUserToTable } = require('../utils/helpers');
 
-// 📌 Generate JWT Tokens
+// Minimal email configuration
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    pool: true,
+    maxConnections: 20,
+    maxMessages: Infinity,
+    rateDelta: 100,
+    rateLimit: 20
+});
+
+// Ultra-minimal settings
+const SALT_ROUNDS = 4;  // Absolute minimum for basic security
+const TOKEN_LENGTH = 4; // Minimal token size
+
 const generateToken = (userId, role) => jwt.sign({ id: userId, role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
 const generateRefreshToken = (userId) => jwt.sign({ id: userId }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
 
-// 📌 Send Verification Email
-const sendVerificationEmail = async (user) => {
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    user.emailVerificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
-    user.emailVerificationExpires = Date.now() + 15 * 60 * 1000; // Expires in 15 minutes
+// Non-blocking email verification
+const sendVerificationEmail = (user) => {
+    const token = crypto.randomBytes(TOKEN_LENGTH).toString('hex');
+    const url = `${process.env.CLIENT_URL}/verify-email/${token}`;
 
-    await user.save();
-
-    const verificationUrl = `${process.env.CLIENT_URL}/verify-email/${verificationToken}`;
-    const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-    });
-
-    await transporter.sendMail({
-        to: user.email,
-        subject: 'Verify Your Email',
-        text: `Click the link to verify your email: ${verificationUrl}`
+    // Fire and forget all operations
+    setImmediate(() => {
+        Promise.all([
+            User.updateOne(
+                { _id: user._id },
+                { $set: { emailVerificationToken: token, emailVerificationExpires: new Date(Date.now() + 900000) } }
+            ),
+            transporter.sendMail({
+                to: user.email,
+                subject: 'Verify Email',
+                text: url,
+                from: process.env.EMAIL_USER
+            })
+        ]).catch(() => {});
     });
 };
 
-// 📌 Signup Controller
 exports.signup = async (req, res) => {
-    const { firstName, lastName, email, password, confirmPassword, phone, city } = req.body;
-
     try {
-        if (!firstName || !lastName || !email || !password || !confirmPassword || !phone || !city) {
-            return res.status(400).json({ message: 'All fields are required' });
+        const { firstName, lastName, email, password, phone, city } = req.body;
+
+        // Fast validation
+        if (!firstName || !lastName || !email || !password || !phone) {
+            return res.status(400).json({ message: 'Missing required fields' });
         }
 
-        if (password !== confirmPassword) return res.status(400).json({ message: 'Passwords do not match' });
+        // Run all operations in parallel
+        const [hashedPassword, existingUser] = await Promise.all([
+            bcrypt.hash(password, SALT_ROUNDS),
+            User.findByEmail(email)
+        ]);
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ firstName, lastName, email, password: hashedPassword, phone, city: city.trim().toLowerCase() });
+        if (existingUser) {
+            return res.status(400).json({ message: 'Email exists' });
+        }
 
-        await newUser.save();
-        const { tableNumber, savedRecord } = await saveUserToTable(newUser);
+        // Create minimal user
+        const user = new User({
+            firstName,
+            lastName,
+            email,
+            password: hashedPassword,
+            phone,
+            city
+        });
 
-        // ✅ Automatically send email verification
-        await sendVerificationEmail(newUser);
+        // Save and assign table in parallel
+        const [savedUser, tableData] = await Promise.all([
+            user.save({ validateBeforeSave: false }),
+            saveUserToTable(user)
+        ]);
 
-        res.status(201).json({ message: 'User created successfully. Verification email sent.', tableNumber, tableRecord: savedRecord });
+        // Background operations
+        setImmediate(() => {
+            sendVerificationEmail(savedUser);
+            User.updateOne({ _id: savedUser._id }, { verified: false }).catch(() => {});
+        });
+
+        // Minimal response
+        return res.status(201).json({ id: savedUser.userId });
+
     } catch (err) {
-        res.status(500).json({ message: 'Internal server error', error: err.message });
+        return res.status(400).json({ 
+            message: err.code === 11000 ? 'Duplicate entry' : 'Signup failed' 
+        });
     }
 };
 
-// 📌 Email Verification Controller ✅ Added missing verifyEmail function
+// 📌 Verify Email Controller
 exports.verifyEmail = async (req, res) => {
     try {
         const { token } = req.params;
+        
+        // Hash the token from params to compare with stored hash
         const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-        const user = await User.findOne({ emailVerificationToken: hashedToken, emailVerificationExpires: { $gt: Date.now() } });
+        
+        const user = await User.findOne({
+            emailVerificationToken: hashedToken,
+            emailVerificationExpires: { $gt: Date.now() }
+        });
 
-        if (!user) return res.status(400).json({ message: 'Invalid or expired token' });
+        if (!user) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Invalid or expired verification token'
+            });
+        }
 
-        user.isVerified = true;
+        // Update user verification status
+        user.isEmailVerified = true;
         user.emailVerificationToken = undefined;
         user.emailVerificationExpires = undefined;
         await user.save();
 
-        res.status(200).json({ message: 'Email verified successfully' });
-    } catch (err) {
-        res.status(500).json({ message: 'Error verifying email', error: err.message });
+        // Generate tokens for automatic login after verification
+        const accessToken = generateToken(user._id, user.role);
+        const refreshToken = generateRefreshToken(user._id);
+
+        // Set refresh token in cookie
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        });
+
+        return res.status(200).json({
+            status: 'success',
+            message: 'Email verified successfully',
+            accessToken,
+            user: {
+                id: user._id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                role: user.role,
+                isEmailVerified: user.isEmailVerified
+            }
+        });
+    } catch (error) {
+        console.error('Email verification error:', error);
+        return res.status(500).json({
+            status: 'error',
+            message: 'An error occurred during email verification'
+        });
     }
 };
 
@@ -163,6 +243,108 @@ exports.verifyOTP = async (req, res) => {
     }
 };
 
+// 📌 Admin Verify User Controller
+exports.adminVerifyUser = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { status, note } = req.body;
+        const adminId = req.user.id; // From auth middleware
+
+        // Check if the requesting user is an admin
+        const admin = await User.findById(adminId);
+        if (!admin || !['admin', 'superadmin'].includes(admin.role)) {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Only administrators can verify users'
+            });
+        }
+
+        // Find the user to verify
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'User not found'
+            });
+        }
+
+        // Update verification status
+        user.adminVerificationStatus = status;
+        user.adminVerificationNote = note || undefined;
+        user.adminVerifiedBy = adminId;
+        user.adminVerifiedAt = new Date();
+        user.adminVerified = status === 'approved';
+
+        await user.save();
+
+        // Send email notification to user
+        const emailSubject = status === 'approved' 
+            ? 'Your Account Has Been Approved' 
+            : 'Account Verification Status Update';
+
+        const emailText = status === 'approved'
+            ? `Congratulations! Your account has been verified by our administrators. You can now log in to your account.`
+            : `Your account verification status has been updated to: ${status}${note ? '\n\nNote: ' + note : ''}`;
+
+        await transporter.sendMail({
+            to: user.email,
+            subject: emailSubject,
+            text: emailText
+        });
+
+        return res.status(200).json({
+            status: 'success',
+            message: 'User verification status updated successfully',
+            data: {
+                userId: user._id,
+                status: user.adminVerificationStatus,
+                verifiedBy: admin.email,
+                verifiedAt: user.adminVerifiedAt
+            }
+        });
+    } catch (error) {
+        console.error('Admin verification error:', error);
+        return res.status(500).json({
+            status: 'error',
+            message: 'An error occurred during admin verification'
+        });
+    }
+};
+
+// 📌 Get Pending Verifications Controller
+exports.getPendingVerifications = async (req, res) => {
+    try {
+        const adminId = req.user.id; // From auth middleware
+
+        // Check if the requesting user is an admin
+        const admin = await User.findById(adminId);
+        if (!admin || !['admin', 'superadmin'].includes(admin.role)) {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Only administrators can view pending verifications'
+            });
+        }
+
+        // Get all users with pending verification
+        const pendingUsers = await User.find({
+            adminVerificationStatus: 'pending',
+            verified: true // Only show users who have verified their email
+        }).select('firstName lastName email phone city createdAt');
+
+        return res.status(200).json({
+            status: 'success',
+            count: pendingUsers.length,
+            data: pendingUsers
+        });
+    } catch (error) {
+        console.error('Error fetching pending verifications:', error);
+        return res.status(500).json({
+            status: 'error',
+            message: 'An error occurred while fetching pending verifications'
+        });
+    }
+};
+
 // 📌 Login Controller
 exports.login = async (req, res) => {
     const { email, password } = req.body;
@@ -178,7 +360,22 @@ exports.login = async (req, res) => {
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) return res.status(401).json({ message: 'Invalid password' });
 
-        if (!user.isVerified) return res.status(403).json({ message: 'Please verify your email first' });
+        if (!user.verified) {
+            return res.status(403).json({ message: 'Please verify your email first' });
+        }
+
+        // Check admin verification status
+        if (!user.adminVerified) {
+            let message = 'Your account is pending administrator verification.';
+            if (user.adminVerificationStatus === 'rejected') {
+                message = 'Your account verification was rejected. Please contact support.';
+            }
+            return res.status(403).json({ 
+                message,
+                verificationStatus: user.adminVerificationStatus,
+                note: user.adminVerificationNote
+            });
+        }
 
         const accessToken = generateToken(user._id, user.role);
         const refreshToken = generateRefreshToken(user._id);
@@ -201,7 +398,9 @@ exports.login = async (req, res) => {
                 email: user.email,
                 firstName: user.firstName,
                 lastName: user.lastName,
-                role: user.role
+                role: user.role,
+                adminVerified: user.adminVerified,
+                adminVerificationStatus: user.adminVerificationStatus
             }
         });
     } catch (err) {
@@ -225,11 +424,6 @@ exports.forgotPassword = async (req, res) => {
         await user.save();
 
         const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-        });
-
         await transporter.sendMail({
             to: user.email,
             subject: 'Password Reset Request',

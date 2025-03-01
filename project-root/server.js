@@ -26,6 +26,9 @@ const corporateRoutes = require('./routes/corporateRoutes');
 const educationRoutes = require('./routes/educationRoutes');
 const userHistoryRoutes = require('./routes/userHistoryRoutes');
 const activityRoutes = require('./routes/activityRoutes');
+const treePlantationRoutes = require('./routes/treePlantationRoutes');
+const locationRoutes = require('./routes/locationRoutes');
+const landOwnershipRoutes = require('./routes/landOwnershipRoutes');
 
 const app = express();
 
@@ -83,6 +86,9 @@ app.use('/api/corporate', corporateRoutes);
 app.use('/api/education', educationRoutes);
 app.use('/api/history', userHistoryRoutes);
 app.use('/api/activity', activityRoutes);
+app.use('/api/tree-plantations', treePlantationRoutes);
+app.use('/api/locations', locationRoutes);
+app.use('/api/land-ownership', landOwnershipRoutes);
 
 // ✅ Refresh Token Route (If Needed)
 app.post('/api/refresh-token', refreshTokenMiddleware);
@@ -141,5 +147,18 @@ process.on('uncaughtException', (error) => {
 });
 
 // ✅ Start Server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port http://127.0.0.1:${PORT}`));
+// const PORT = process.env.PORT || 5000;
+
+
+const PORT = 3068;
+const HOST = "0.0.0.0"; // Localhost (Only accessible from this machine)
+
+app.get('/', (req, res) => {
+  res.send('Server is running!');
+});
+
+app.listen(PORT, HOST, () => {
+  console.log(`🌍 Server running on http://${HOST}:${PORT}`);
+});
+
+// app.listen(PORT, () => console.log(`🚀 Server running on port http://127.0.0.1:${PORT}`));

@@ -3,9 +3,12 @@ const {
     getAllBlockPlantations,
     updateBlockPlantation,
     deleteBlockPlantation,
-    createBlockPlantation
+    createBlockPlantation,
+    getPlantationStatistics,
+    verifyPlantation,
+    downloadKML
 } = require('../controllers/blockPlantationController');
-const { authenticateToken, authorizeRoles } = require('../middlewares/authMiddleware');
+const { authenticateToken, authorizeRoles, protect, restrictTo } = require('../middlewares/authMiddleware');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -55,5 +58,16 @@ router.post('/create', authenticateToken, uploadBlockPlantation.fields([
     { name: 'prePlantationImage', maxCount: 1 },
     { name: 'plantationImage', maxCount: 1 }
 ]), createBlockPlantation);
+
+// Public routes
+router.get('/', getAllBlockPlantations);
+router.get('/statistics', getPlantationStatistics);
+router.get('/:id/kml', downloadKML);
+
+// Protected routes
+router.use(protect);
+router.post('/', restrictTo('admin', 'organization'), createBlockPlantation);
+router.post('/:id/verify', restrictTo('admin', 'verifier'), verifyPlantation);
+router.delete('/:id', restrictTo('admin'), deleteBlockPlantation);
 
 module.exports = router;

@@ -1,29 +1,72 @@
 const mongoose = require('mongoose');
 
+// Ultra aggressive performance optimizations
+mongoose.set('bufferCommands', false);
+mongoose.set('autoIndex', false);
+mongoose.set('maxTimeMS', 500); // Reduced timeout
+
+// Minimal schema with absolute minimum fields for signup
 const userSchema = new mongoose.Schema({
-    firstName: { type: String, required: true, trim: true },
-    lastName: { type: String, required: true, trim: true },
-    email: { type: String, unique: true, required: true, trim: true, lowercase: true },
-    phone: { type: String, unique: true, sparse: true },
-    password: { type: String, minlength: 8, required: true },
-    refreshTokens: { type: [String], default: [] },
-    role: { type: String, enum: ['user', 'admin', 'superadmin'], default: 'user' },
-    verified: { type: Boolean, default: false },
-    city: { type: String, trim: true },
-    resetPasswordToken: { type: String },
-    resetPasswordExpires: { type: Date },
-    otp: {
-        type: String,
-        required: false,
+    userId: { 
+        type: String, 
+        unique: true,
+        default: () => Date.now().toString(36) + Math.random().toString(36).slice(2) // Faster ID generation
     },
-    otpExpires: {
-        type: Date,
-        required: false,
+    firstName: String,
+    lastName: String,
+    email: { 
+        type: String, 
+        unique: true,
+        lowercase: true
     },
-    failedLoginAttempts: { type: Number, default: 0 },
-    lockoutUntil: { type: Date },
-    emailVerificationToken: { type: String },  // ✅ New Field
-    emailVerificationExpires: { type: Date }  // ✅ Expiry for Token
-}, { timestamps: true });
+    phone: { 
+        type: String, 
+        sparse: true
+    },
+    password: String,
+    role: { 
+        type: String, 
+        default: 'user'
+    },
+    verified: { 
+        type: Boolean, 
+        default: true
+    },
+    adminVerified: { 
+        type: Boolean, 
+        default: false
+    },
+    adminVerificationStatus: { 
+        type: String, 
+        default: 'pending'
+    },
+    city: String,
+    emailVerificationToken: String,
+    emailVerificationExpires: Date
+}, { 
+    timestamps: true,
+    minimize: true,
+    versionKey: false,
+    strict: false,
+    bufferCommands: false,
+    autoIndex: false,
+    id: false // Disable virtual id getter
+});
+
+// Single compound index for most common queries
+userSchema.index({ email: 1, phone: 1 }, { sparse: true });
+
+// Ultra-optimized lean query helper
+userSchema.statics.findByEmail = function(email) {
+    return this.findOne({ email }, 'email phone', { lean: true });
+};
+
+// Optimize response
+userSchema.set('toJSON', {
+    transform: (_, ret) => {
+        const { _id, __v, password, ...user } = ret;
+        return user;
+    }
+});
 
 module.exports = mongoose.model('User', userSchema);

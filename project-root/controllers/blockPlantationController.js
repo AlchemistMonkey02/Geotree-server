@@ -1,11 +1,13 @@
 const BlockPlantation = require('../models/blockPlantationModel');
-const User = require('../models/userModel'); // ✅ Fixed missing import
+const LandOwnership = require('../models/landOwnershipModel');
+const User = require('../models/userModel');
+const Activity = require('../models/activityModel');
 const { deleteFile } = require('../utils/fileUtils');
+const { generateKML } = require('../utils/kmlUtils');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-const Activity = require('../models/activityModel');
 const Event = require('../models/eventModel');
 const Campaign = require('../models/campaignModel');
 
@@ -45,248 +47,385 @@ const uploadBlockPlantation = multer({
 // 📌 Create Block Plantation
 exports.createBlockPlantation = async (req, res) => {
     try {
-        console.log("✅ Received Body:", req.body);
-        console.log("📂 Received Files:", req.files);
-
-        // ✅ Validate image uploads
-        if (!req.files || !req.files.prePlantationImage || !req.files.plantationImage) {
-            return res.status(400).json({ message: 'Both prePlantationImage and plantationImage are required!' });
-        }
-
-        // ✅ Extract & validate required fields
-        const {
-            plantationType, areaType, area, location, boundaryPoints, userMobile, userName, plantName,
-            height, event, userIp, userLocation, latitude, longitude, district, gpName,
-            createdBy, eventId, campaignId, categoryId
-        } = req.body;
-
-        const requiredFields = [
-            'plantationType', 'areaType', 'location', 'boundaryPoints', 'userMobile', 'userName',
-            'plantName', 'height', 'event', 'userIp', 'userLocation', 'latitude', 'longitude',
-            'district', 'gpName', 'categoryId', 'createdBy', 'area'
-        ];
-
-        const missingFields = requiredFields.filter(field => !req.body[field]);
-        if (missingFields.length > 0) {
-            return res.status(400).json({ message: `Missing fields: ${missingFields.join(', ')}` });
-        }
-
-        // ✅ Check if user is registered
-        const user = await User.findOne({ phone: userMobile });
-        if (!user) {
-            return res.status(400).json({ message: 'User not registered! Please register first.' });
-        }
-
-        // ✅ Parse location & boundary points
-        let parsedLocation, parsedBoundaryPoints;
-        try {
-            parsedLocation = JSON.parse(location);
-            parsedBoundaryPoints = JSON.parse(boundaryPoints);
-        } catch (error) {
-            return res.status(400).json({ message: 'Invalid JSON format in location or boundaryPoints!' });
-        }
-
-        // ✅ Validate `createdBy` ID
-        const userId = mongoose.Types.ObjectId.isValid(createdBy) ? new mongoose.Types.ObjectId(createdBy) : null;
-        if (!userId) {
-            return res.status(400).json({ message: "Invalid createdBy ID format" });
-        }
-
-        // ✅ Validate plantation type
-        const allowedPlantationTypes = ['Teak', 'Bamboo', 'Neem', 'Mahogany'];
-        if (!allowedPlantationTypes.includes(plantationType)) {
-            return res.status(400).json({ message: 'Invalid plantation type!' });
-        }
-
-        // ✅ Validate eventId if provided
-        if (eventId) {
-            const eventExists = await Event.findById(eventId);
-            if (!eventExists) {
-                return res.status(400).json({ message: `Event not found with ID: ${eventId}` });
-            }
-        }
-
-        // ✅ Validate campaignId if provided
-        if (campaignId) {
-            const campaignExists = await Campaign.findById(campaignId);
-            if (!campaignExists) {
-                return res.status(400).json({ message: `Campaign not found with ID: ${campaignId}` });
-            }
-        }
-
-        // ✅ Create new plantation entry
-        const newPlantation = new BlockPlantation({
-            plantationType,
-            areaType,
-            area,
-            location: parsedLocation,
-            boundaryPoints: parsedBoundaryPoints,
-            prePlantationImage: {
-                filename: req.files.prePlantationImage[0].filename,
-                path: req.files.prePlantationImage[0].path,
-                mimetype: req.files.prePlantationImage[0].mimetype,
-                size: req.files.prePlantationImage[0].size
+        // Create land ownership record first
+        const landOwnershipData = {
+            ownershipType: req.body.landOwnership.ownershipType,
+            ownerName: req.body.landOwnership.ownerName,
+            landArea: req.body.landOwnership.landArea,
+            boundaries: {
+                type: 'Polygon',
+                coordinates: req.body.landOwnership.boundaries.coordinates
             },
-            plantationImage: {
-                filename: req.files.plantationImage[0].filename,
-                path: req.files.plantationImage[0].path,
-                mimetype: req.files.plantationImage[0].mimetype,
-                size: req.files.plantationImage[0].size
+            landUseType: req.body.landOwnership.landUseType
+        };
+
+        const landOwnership = new LandOwnership(landOwnershipData);
+        await landOwnership.save();
+
+        // Validate tree species total
+        const totalTrees = req.body.treeSpecies.reduce((sum, species) => sum + species.quantity, 0);
+        if (totalTrees !== req.body.numberOfTrees) {
+            throw new Error('Sum of tree species quantities must match total number of trees');
+        }
+
+        // Create plantation with land ownership reference
+        const plantationData = {
+            organizationType: req.body.organizationType,
+            state: req.body.state,
+            district: req.body.district,
+            village: req.body.village,
+            gramPanchayat: req.body.gramPanchayat,
+            department: req.body.department,
+            ngoName: req.body.ngoName,
+            ngoRegistrationNumber: req.body.ngoRegistrationNumber,
+            individualName: req.body.individualName,
+            contactNumber: req.body.contactNumber,
+            email: req.body.email,
+            plantationArea: req.body.plantationArea,
+            numberOfTrees: req.body.numberOfTrees,
+            plantationDate: req.body.plantationDate,
+            treeSpecies: req.body.treeSpecies,
+            location: req.body.location,
+            boundaries: {
+                type: 'Polygon',
+                coordinates: req.body.boundaries.coordinates
             },
-            userMobile,
-            userName,
-            plantName,
-            height: parseFloat(height),
-            event,
-            userIp,
-            userLocation,
-            latitude: parseFloat(latitude),
-            longitude: parseFloat(longitude),
-            district,
-            gpName,
-            categoryId,
-            campaignId: campaignId || null,
-            eventId: eventId || null,
-            createdBy: userId
+            landOwnership: landOwnership._id,
+            createdBy: req.user._id
+        };
+
+        // Handle file uploads
+        if (req.files && req.files.length > 0) {
+            plantationData.photos = req.files.map(file => ({
+                url: file.path,
+                caption: file.originalname,
+                uploadDate: new Date()
+            }));
+        }
+
+        // Check for overlapping plantations
+        const overlappingPlantations = await BlockPlantation.find({
+            boundaries: {
+                $geoIntersects: {
+                    $geometry: {
+                        type: 'Polygon',
+                        coordinates: req.body.boundaries.coordinates
+                    }
+                }
+            }
         });
 
-        await newPlantation.save();
+        if (overlappingPlantations.length > 0) {
+            throw new Error('This area overlaps with existing plantations');
+        }
 
-        // ✅ Create user activity log
+        const plantation = new BlockPlantation(plantationData);
+        await plantation.save();
+
+        // Create activity log
         const activity = new Activity({
-            userId,
-            plantName,
-            height: parseFloat(height),
-            areaType,
-            event,
-            area,
-            userName,
-            userMobile,
-            prePlantationImage: req.files.prePlantationImage[0].path,
-            plantationImage: req.files.plantationImage[0].path,
-            location: {
-                type: "Point",
-                coordinates: [parseFloat(longitude), parseFloat(latitude)]
-            },
-            categoryId,
-            eventId: eventId || null,
-            campaignId: campaignId || null
+            type: 'BLOCK_PLANTATION_CREATED',
+            userId: req.user._id,
+            details: {
+                plantationId: plantation._id,
+                numberOfTrees: plantation.numberOfTrees,
+                area: plantation.plantationArea
+            }
         });
-
         await activity.save();
 
         res.status(201).json({
-            message: '✅ Block Plantation successfully created!',
-            data: newPlantation
+            status: 'success',
+            data: {
+                plantation,
+                landOwnership
+            }
         });
-
     } catch (error) {
-        console.error('❌ Error:', error);
-        res.status(500).json({ message: 'Internal Server Error', error: error.message });
+        res.status(400).json({
+            status: 'error',
+            message: error.message
+        });
     }
 };
+
 // 📌 Get all Block Plantations
 exports.getAllBlockPlantations = async (req, res) => {
     try {
-        let query = {};
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
 
-        // 🛑 Admin access restriction
-        if (req.user.role === 'admin') {
-            const admin = await User.findById(req.user.id);
-            if (!admin) return res.status(404).json({ message: 'Admin not found' });
+        // Build filter object
+        const filter = {};
+        if (req.query.organizationType) filter.organizationType = req.query.organizationType;
+        if (req.query.state) filter.state = req.query.state;
+        if (req.query.district) filter.district = req.query.district;
+        if (req.query.status) filter.status = req.query.status;
 
-            const cityUsers = await User.find({ city: admin.city }).select('_id');
-            query.createdBy = { $in: cityUsers.map(user => user._id) };
+        // Date range filter
+        if (req.query.startDate && req.query.endDate) {
+            filter.plantationDate = {
+                $gte: new Date(req.query.startDate),
+                $lte: new Date(req.query.endDate)
+            };
         }
 
-        const plantations = await BlockPlantation.find(query)
-            .populate('createdBy', 'firstName lastName city')
-            .sort({ createdAt: -1 });
+        // Area range filter
+        if (req.query.minArea || req.query.maxArea) {
+            filter['plantationArea.value'] = {};
+            if (req.query.minArea) filter['plantationArea.value'].$gte = parseFloat(req.query.minArea);
+            if (req.query.maxArea) filter['plantationArea.value'].$lte = parseFloat(req.query.maxArea);
+        }
 
-        res.status(200).json({ message: 'Block plantations retrieved successfully', plantations });
+        // Geospatial query
+        if (req.query.near) {
+            const [longitude, latitude] = req.query.near.split(',').map(Number);
+            filter.location = {
+                $near: {
+                    $geometry: {
+                        type: 'Point',
+                        coordinates: [longitude, latitude]
+                    },
+                    $maxDistance: 10000 // 10km radius
+                }
+            };
+        }
+
+        const [plantations, total] = await Promise.all([
+            BlockPlantation.find(filter)
+                .populate('state district village gramPanchayat landOwnership createdBy verifiedBy')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            BlockPlantation.countDocuments(filter)
+        ]);
+
+        res.status(200).json({
+            status: 'success',
+            data: plantations,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(total / limit),
+                totalRecords: total,
+                recordsPerPage: limit
+            }
+        });
     } catch (error) {
-        console.error('Error fetching block plantations:', error);
-        res.status(500).json({ message: 'Internal Server Error', error: error.message });
+        res.status(400).json({
+            status: 'error',
+            message: error.message
+        });
     }
 };
 
-// 📌 Update Block Plantation
-exports.updateBlockPlantation = async (req, res) => {
-    const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: 'Invalid plantation ID' });
-    }
-
+// 📌 Get plantation statistics
+exports.getPlantationStatistics = async (req, res) => {
     try {
-        const { plantationType, areaType, latitude, longitude, boundaryPoints } = req.body;
+        const stats = await BlockPlantation.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    totalPlantations: { $sum: 1 },
+                    totalTrees: { $sum: '$numberOfTrees' },
+                    totalArea: { $sum: '$plantationArea.value' },
+                    averageSurvivalRate: {
+                        $avg: {
+                            $cond: [
+                                { $ifNull: ['$surveyDetails.treesSurvived', false] },
+                                { $multiply: [
+                                    { $divide: ['$surveyDetails.treesSurvived', '$numberOfTrees'] },
+                                    100
+                                ]},
+                                null
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    totalPlantations: 1,
+                    totalTrees: 1,
+                    totalArea: 1,
+                    averageSurvivalRate: { $round: ['$averageSurvivalRate', 2] }
+                }
+            }
+        ]);
 
-        if (!plantationType || !areaType || !latitude || !longitude || !boundaryPoints) {
-            return res.status(400).json({ message: 'All fields are required!' });
-        }
+        const speciesStats = await BlockPlantation.aggregate([
+            { $unwind: '$treeSpecies' },
+            {
+                $group: {
+                    _id: '$treeSpecies.name',
+                    totalTrees: { $sum: '$treeSpecies.quantity' }
+                }
+            },
+            {
+                $project: {
+                    species: '$_id',
+                    totalTrees: 1,
+                    _id: 0
+                }
+            }
+        ]);
 
-        let parsedBoundaryPoints;
-        try {
-            parsedBoundaryPoints = JSON.parse(boundaryPoints);
-        } catch (err) {
-            return res.status(400).json({ message: 'Invalid boundaryPoints format' });
-        }
-
-        const updatedData = {
-            plantationType,
-            areaType,
-            location: { type: 'Point', coordinates: [parseFloat(longitude), parseFloat(latitude)] },
-            boundaryPoints: parsedBoundaryPoints
-        };
-
-        const existingPlantation = await BlockPlantation.findById(id);
-        if (!existingPlantation) {
-            return res.status(404).json({ message: 'Block plantation not found' });
-        }
-
-        // Handle image updates
-        if (req.files?.prePlantationImage) {
-            deleteFile(existingPlantation.prePlantationImage?.path);
-            updatedData.prePlantationImage = req.files.prePlantationImage[0];
-        }
-        if (req.files?.plantationImage) {
-            deleteFile(existingPlantation.plantationImage?.path);
-            updatedData.plantationImage = req.files.plantationImage[0];
-        }
-
-        const updatedPlantation = await BlockPlantation.findByIdAndUpdate(id, updatedData, { new: true });
-
-        res.status(200).json({ message: 'Block plantation updated successfully', plantation: updatedPlantation });
+        res.status(200).json({
+            status: 'success',
+            data: {
+                overview: stats[0] || {},
+                speciesDistribution: speciesStats
+            }
+        });
     } catch (error) {
-        console.error('Error updating block plantation:', error);
-        res.status(500).json({ message: 'Internal Server Error', error: error.message });
+        res.status(400).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+};
+
+// 📌 Verify plantation
+exports.verifyPlantation = async (req, res) => {
+    try {
+        const { status, comments, surveyDetails } = req.body;
+        
+        // Handle survey photos if present
+        let surveyPhotos = [];
+        if (req.files && req.files.length > 0) {
+            surveyPhotos = req.files.map(file => ({
+                url: file.path,
+                caption: file.originalname,
+                uploadDate: new Date()
+            }));
+        }
+
+        const plantation = await BlockPlantation.findByIdAndUpdate(
+            req.params.id,
+            {
+                status,
+                verificationComments: comments,
+                verifiedBy: req.user._id,
+                verificationDate: Date.now(),
+                surveyDetails: {
+                    ...surveyDetails,
+                    lastSurveyDate: Date.now(),
+                    surveyPhotos
+                }
+            },
+            { new: true, runValidators: true }
+        ).populate('state district village gramPanchayat landOwnership createdBy verifiedBy');
+
+        if (!plantation) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Block plantation not found'
+            });
+        }
+
+        // Create verification activity
+        const activity = new Activity({
+            type: 'BLOCK_PLANTATION_VERIFIED',
+            userId: req.user._id,
+            details: {
+                plantationId: plantation._id,
+                status,
+                survivalRate: plantation.survivalRate
+            }
+        });
+        await activity.save();
+
+        res.status(200).json({
+            status: 'success',
+            data: plantation
+        });
+    } catch (error) {
+        res.status(400).json({
+            status: 'error',
+            message: error.message
+        });
     }
 };
 
 // 📌 Delete Block Plantation
 exports.deleteBlockPlantation = async (req, res) => {
-    const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: 'Invalid plantation ID' });
-    }
-
     try {
-        const deletedPlantation = await BlockPlantation.findById(id);
-
-        if (!deletedPlantation) {
-            return res.status(404).json({ message: 'Block plantation not found' });
+        const plantation = await BlockPlantation.findById(req.params.id);
+        
+        if (!plantation) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Block plantation not found'
+            });
         }
 
-        // Delete stored images
-        deleteFile(deletedPlantation.prePlantationImage?.path);
-        deleteFile(deletedPlantation.plantationImage?.path);
+        // Delete associated land ownership
+        await LandOwnership.findByIdAndDelete(plantation.landOwnership);
 
-        await BlockPlantation.findByIdAndDelete(id);
+        // Delete photos
+        if (plantation.photos) {
+            plantation.photos.forEach(photo => {
+                deleteFile(photo.url);
+            });
+        }
 
-        res.status(200).json({ message: 'Block plantation deleted successfully' });
+        // Delete survey photos
+        if (plantation.surveyDetails?.surveyPhotos) {
+            plantation.surveyDetails.surveyPhotos.forEach(photo => {
+                deleteFile(photo.url);
+            });
+        }
+
+        await BlockPlantation.findByIdAndDelete(req.params.id);
+
+        res.status(200).json({
+            status: 'success',
+            message: 'Block plantation and associated records deleted successfully'
+        });
     } catch (error) {
-        console.error('Error deleting block plantation:', error);
-        res.status(500).json({ message: 'Internal Server Error', error: error.message });
+        res.status(400).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+};
+
+// 📌 Download KML
+exports.downloadKML = async (req, res) => {
+    try {
+        const plantation = await BlockPlantation.findById(req.params.id);
+        
+        if (!plantation) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Block plantation not found'
+            });
+        }
+
+        const kmlContent = generateKML(plantation);
+        
+        // Set response headers for file download
+        res.setHeader('Content-Type', 'application/vnd.google-earth.kml+xml');
+        res.setHeader('Content-Disposition', `attachment; filename=plantation-${plantation._id}.kml`);
+        
+        // Send KML content
+        res.send(kmlContent);
+
+        // Log activity
+        const activity = new Activity({
+            type: 'BLOCK_PLANTATION_KML_DOWNLOADED',
+            userId: req.user._id,
+            details: {
+                plantationId: plantation._id
+            }
+        });
+        await activity.save();
+
+    } catch (error) {
+        res.status(400).json({
+            status: 'error',
+            message: error.message
+        });
     }
 };

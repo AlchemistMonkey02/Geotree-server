@@ -1,7 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const { signup, login, logout, forgotPassword, resetPassword, verifyEmail, verifyOTP, refreshToken } = require('../controllers/userController');
+const { 
+    signup, 
+    login, 
+    logout, 
+    forgotPassword, 
+    resetPassword, 
+    verifyEmail, 
+    verifyOTP, 
+    refreshToken,
+    adminVerifyUser,
+    getPendingVerifications 
+} = require('../controllers/userController');
 const { authenticateToken } = require('../middlewares/authMiddleware');
+const { authorizeRoles } = require('../middlewares/roleMiddleware');
 const passport = require('passport');
 
 // 📌 Authentication Routes
@@ -16,6 +28,10 @@ router.post('/refresh-token', refreshToken);   // Ensure `refreshToken` is prope
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 
+// 📌 Admin Verification Routes
+router.put('/admin-verify/:userId', authenticateToken, authorizeRoles(['admin', 'superadmin']), adminVerifyUser);
+router.get('/pending-verifications', authenticateToken, authorizeRoles(['admin', 'superadmin']), getPendingVerifications);
+
 // 📌 Google Login Route
 router.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
@@ -27,6 +43,5 @@ router.get(
         res.redirect(`${process.env.CLIENT_URL}/dashboard`);
     }
 );
-
 
 module.exports = router;

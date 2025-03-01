@@ -1,63 +1,50 @@
 const { Table1, Table2, Table3 } = require('../models/tableModel');
 const TrackingTable = require('../models/trackingModel');
 
-// 📌 Get table number based on first letter of the first name
-const getTableNumber = (alphabet) => {
-    if (!alphabet || typeof alphabet !== 'string') {
-        console.error(`Invalid input: "${alphabet}". Expected a single character.`);
-        return null;
-    }
+// Pre-allocated buffer for ultra-fast lookups
+const RANGES = Buffer.alloc(91);  // ASCII 'Z' is 90
+for (let i = 65; i <= 90; i++) RANGES[i] = i <= 73 ? 1 : i <= 82 ? 2 : 3;
 
-    const charCode = alphabet.charCodeAt(0);
-    if (charCode >= 65 && charCode <= 90) { // A-Z
-        if (charCode <= 73) return 1; // A-I
-        if (charCode <= 82) return 2; // J-R
-        return 3; // S-Z
-    }
-
-    console.error(`Input "${alphabet}" is not a valid uppercase letter.`);
-    return null;
+// Pre-bound table methods for maximum performance
+const TABLES = {
+    1: Table1.create.bind(Table1),
+    2: Table2.create.bind(Table2),
+    3: Table3.create.bind(Table3)
 };
 
-// 📌 Save User to the Correct Table
-const saveUserToTable = async (user) => {
-    const { firstName, lastName, _id: userId } = user;
+// Ultra-optimized table lookup
+const getTableNumber = c => !c ? null : RANGES[c.toUpperCase().charCodeAt(0)] || null;
 
-    if (!firstName) {
-        throw new Error('First name is required to determine table number.');
-    }
+const saveUserToTable = async ({ firstName, lastName, _id: userId }) => {
+    if (!firstName) throw new Error('Name required');
 
-    const fullName = `${firstName} ${lastName}`;
-    const alphabet = firstName.charAt(0).toUpperCase();
-    const tableNumber = getTableNumber(alphabet);
+    const tableNumber = getTableNumber(firstName[0]);
+    if (!tableNumber) throw new Error('Invalid name');
 
-    if (!tableNumber) {
-        throw new Error(`Failed to map "${alphabet}" to a valid table.`);
-    }
+    const createRecord = TABLES[tableNumber];
+    if (!createRecord) throw new Error('Invalid table');
 
-    let savedRecord;
-    switch (tableNumber) {
-        case 1:
-            savedRecord = await Table1.create({ userId, username: fullName, value: alphabet });
-            break;
-        case 2:
-            savedRecord = await Table2.create({ userId, username: fullName, value: alphabet });
-            break;
-        case 3:
-            savedRecord = await Table3.create({ userId, username: fullName, value: alphabet });
-            break;
-        default:
-            throw new Error('Unexpected table number.');
-    }
-
-    await TrackingTable.create({
+    // Minimal record creation
+    const savedRecord = await createRecord({
         userId,
-        username: fullName,
-        tableNumber,
-        value: alphabet,
+        username: firstName + ' ' + lastName,
+        value: firstName[0].toUpperCase()
+    });
+
+    // Update tracking in background
+    setImmediate(() => {
+        TrackingTable.create({
+            userId,
+            username: savedRecord.username,
+            value: savedRecord.value,
+            tableNumber
+        }).catch(() => {});  // Ignore tracking errors
     });
 
     return { tableNumber, savedRecord };
 };
 
-module.exports = { getTableNumber, saveUserToTable };
+module.exports = {
+    getTableNumber,
+    saveUserToTable
+};
