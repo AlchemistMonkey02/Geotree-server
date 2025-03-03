@@ -117,7 +117,6 @@ exports.getUserHistory = async (req, res) => {
         res.status(500).json({ message: 'Error fetching user history', error: error.message });
     }
 };
-
 // 📌 Get Activity Analytics
 exports.getActivityAnalytics = async (req, res) => {
     try {
@@ -128,18 +127,50 @@ exports.getActivityAnalytics = async (req, res) => {
             dateFilter.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
         }
 
-        // 📌 Get total activities
-        const totalActivities = await Activity.countDocuments(dateFilter);
-
         // 📌 Get top 5 events
         const topEvents = await Activity.aggregate([
-            { $match: dateFilter },
+            { $match: { ...dateFilter, userId: req.user.id } },
             { $group: { _id: "$event", count: { $sum: 1 } } },
             { $sort: { count: -1 } },
             { $limit: 5 }
         ]);
 
-        res.status(200).json({ totalActivities, topEvents });
+        // 📌 Get total events for the user
+        const userId = req.user.id;
+        const totalUserEvents = await Activity.aggregate([
+            { $match: { userId: userId, ...dateFilter } },
+            { $group: { 
+                _id: null,
+                total: { $sum: 1 }
+            }},
+            { $project: {
+                _id: 0,
+                total: 1
+            }}
+        ]).then(result => result[0]?.total || 0);
+
+        // 📌 Get total trees planted by user
+        const totalTreesPlanted = await Activity.aggregate([
+            { $match: { 
+                userId: userId,
+                event: "TREE_PLANTED",
+                ...dateFilter 
+            }},
+            { $group: {
+                _id: null,
+                totalTrees: { $sum: 1 }
+            }},
+            { $project: {
+                _id: 0,
+                totalTrees: 1
+            }}
+        ]).then(result => result[0]?.totalTrees || 0);
+
+        res.status(200).json({ 
+            topEvents, 
+            totalUserEvents,
+            totalTreesPlanted 
+        });
     } catch (error) {
         res.status(500).json({ message: "Error fetching analytics", error: error.message });
     }
@@ -212,6 +243,7 @@ exports.adminGetAllUserHistory = async (req, res) => {
             .populate('treeCategory', 'name')
             .populate('eventId', 'title description')
             .populate('userId', 'firstName lastName email');
+            
 
         const totalActivities = await Activity.countDocuments(query);
 

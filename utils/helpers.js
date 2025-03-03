@@ -1,5 +1,6 @@
 const { Table1, Table2, Table3 } = require('../models/tableModel');
 const TrackingTable = require('../models/trackingModel');
+const jwt = require('jsonwebtoken');
 
 // Pre-allocated buffer for ultra-fast lookups
 const RANGES = Buffer.alloc(91);  // ASCII 'Z' is 90
@@ -44,7 +45,17 @@ const saveUserToTable = async ({ firstName, lastName, _id: userId }) => {
     return { tableNumber, savedRecord };
 };
 
+const generateAccessToken = (userId, role) => {
+    return jwt.sign({ id: userId, role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn:"15m"});
+};
+
+const generateRefreshToken = (userId) => {
+    return jwt.sign({ id: userId }, process.env.REFRESH_TOKEN_SECRET, { expiresIn:'7d'});
+};
+
 module.exports = {
     getTableNumber,
-    saveUserToTable
+    saveUserToTable,
+    generateAccessToken,
+    generateRefreshToken
 };

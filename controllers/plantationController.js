@@ -140,3 +140,4 @@ exports.getPlantationCount = async (req, res) => {
         res.status(500).json({ message: 'Error fetching plantation counts', error: error.message });
     }
 };
+
