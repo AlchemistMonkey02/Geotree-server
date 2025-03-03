@@ -10,7 +10,9 @@ const {
     getIndividualPlantationById,
     updateIndividualPlantation,
     deleteIndividualPlantation,
-    verifyIndividualPlantation
+    verifyIndividualPlantation,
+    getDashboardStatistics,
+    downloadKML
 } = require('../controllers/individualPlantationController');
 
 // Configure multer for file uploads
@@ -40,7 +42,9 @@ const upload = multer({
 
 // Public routes
 router.get('/', getAllIndividualPlantations);
+router.get('/dashboard', getDashboardStatistics);
 router.get('/:id', getIndividualPlantationById);
+router.get('/:id/kml', downloadKML);
 
 // Protected routes (require authentication)
 router.use(authenticateToken);

@@ -34,11 +34,11 @@ const userSchema = new mongoose.Schema({
     },
     adminVerified: { 
         type: Boolean, 
-        default: false
+        default: true
     },
     adminVerificationStatus: { 
         type: String, 
-        default: 'pending'
+        default: 'Approved'
     },
     city: String,
     emailVerificationToken: String,

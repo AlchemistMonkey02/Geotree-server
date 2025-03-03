@@ -29,6 +29,7 @@ const activityRoutes = require('./routes/activityRoutes');
 const treePlantationRoutes = require('./routes/treePlantationRoutes');
 const locationRoutes = require('./routes/locationRoutes');
 const landOwnershipRoutes = require('./routes/landOwnershipRoutes');
+const combinedPlantationRoutes = require('./routes/combinedPlantationRoutes');
 
 const app = express();
 
@@ -89,6 +90,7 @@ app.use('/api/activity', activityRoutes);
 app.use('/api/tree-plantations', treePlantationRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/land-ownership', landOwnershipRoutes);
+app.use('/api/combined-plantations', combinedPlantationRoutes);
 
 // ✅ Refresh Token Route (If Needed)
 app.post('/api/refresh-token', refreshTokenMiddleware);
@@ -128,9 +130,12 @@ app.use((err, req, res, next) => {
     }
 
     // Default Error
-    res.status(err.status || 500).json({
-        status: 'error',
-        message: err.message || 'Internal Server Error',
+    err.statusCode = err.statusCode || 500;
+    err.status = err.status || 'error';
+
+    res.status(err.statusCode).json({
+        status: err.status,
+        message: err.message,
         ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
     });
 });

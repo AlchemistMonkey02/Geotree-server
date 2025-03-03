@@ -4,7 +4,8 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const passport = require('passport');
-const { saveUserToTable } = require('../utils/helpers');
+const { saveUserToTable, generateAccessToken, generateRefreshToken } = require('../utils/helpers');
+const AppError = require('../utils/AppError');
 
 // Minimal email configuration
 const transporter = nodemailer.createTransport({
@@ -20,9 +21,6 @@ const transporter = nodemailer.createTransport({
 // Ultra-minimal settings
 const SALT_ROUNDS = 4;  // Absolute minimum for basic security
 const TOKEN_LENGTH = 4; // Minimal token size
-
-const generateToken = (userId, role) => jwt.sign({ id: userId, role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
-const generateRefreshToken = (userId) => jwt.sign({ id: userId }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
 
 // Non-blocking email verification
 const sendVerificationEmail = (user) => {
@@ -46,7 +44,7 @@ const sendVerificationEmail = (user) => {
     });
 };
 
-exports.signup = async (req, res) => {
+exports.signup = async (req, res, next) => {
     try {
         const { firstName, lastName, email, password, phone, city } = req.body;
 
@@ -77,23 +75,19 @@ exports.signup = async (req, res) => {
 
         // Save and assign table in parallel
         const [savedUser, tableData] = await Promise.all([
-            user.save({ validateBeforeSave: false }),
+            user.save({ validateBeforeSave: true }),
             saveUserToTable(user)
         ]);
 
-        // Background operations
-        setImmediate(() => {
-            sendVerificationEmail(savedUser);
-            User.updateOne({ _id: savedUser._id }, { verified: false }).catch(() => {});
-        });
+        // Use the centralized functions
+        generateAccessToken(savedUser._id, savedUser.role);
+        generateRefreshToken(savedUser._id);
 
         // Minimal response
         return res.status(201).json({ id: savedUser.userId });
 
     } catch (err) {
-        return res.status(400).json({ 
-            message: err.code === 11000 ? 'Duplicate entry' : 'Signup failed' 
-        });
+        next(new AppError('We encountered an issue during signup. Please try again later.', 400));
     }
 };
 
@@ -124,7 +118,7 @@ exports.verifyEmail = async (req, res) => {
         await user.save();
 
         // Generate tokens for automatic login after verification
-        const accessToken = generateToken(user._id, user.role);
+        const accessToken = generateAccessToken(user._id, user.role);
         const refreshToken = generateRefreshToken(user._id);
 
         // Set refresh token in cookie
@@ -177,7 +171,7 @@ exports.refreshToken = async (req, res) => {
 
             // Generate new tokens
             const newRefreshToken = generateRefreshToken(decoded.id);
-            const newAccessToken = generateToken(decoded.id, decoded.role);
+            const newAccessToken = generateAccessToken(decoded.id, decoded.role);
 
             user.refreshTokens.push(newRefreshToken);
             await user.save();
@@ -346,7 +340,7 @@ exports.getPendingVerifications = async (req, res) => {
 };
 
 // 📌 Login Controller
-exports.login = async (req, res) => {
+exports.login = async (req, res, next) => {
     const { email, password } = req.body;
 
     try {
@@ -360,24 +354,7 @@ exports.login = async (req, res) => {
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) return res.status(401).json({ message: 'Invalid password' });
 
-        if (!user.verified) {
-            return res.status(403).json({ message: 'Please verify your email first' });
-        }
-
-        // Check admin verification status
-        if (!user.adminVerified) {
-            let message = 'Your account is pending administrator verification.';
-            if (user.adminVerificationStatus === 'rejected') {
-                message = 'Your account verification was rejected. Please contact support.';
-            }
-            return res.status(403).json({ 
-                message,
-                verificationStatus: user.adminVerificationStatus,
-                note: user.adminVerificationNote
-            });
-        }
-
-        const accessToken = generateToken(user._id, user.role);
+        const accessToken = generateAccessToken(user._id, user.role);
         const refreshToken = generateRefreshToken(user._id);
 
         user.refreshTokens = user.refreshTokens || [];
@@ -404,7 +381,7 @@ exports.login = async (req, res) => {
             }
         });
     } catch (err) {
-        res.status(500).json({ message: 'Error logging in', error: err.message });
+        next(new AppError('We encountered an issue while logging you in. Please try again later.', 500));
     }
 };
 

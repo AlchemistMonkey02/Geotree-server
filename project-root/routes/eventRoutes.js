@@ -1,5 +1,5 @@
 const express = require('express');
-const { createEvent, getEvents, getEventById } = require('../controllers/eventController');
+const { createEvent, getEvents, getEventById, getFilteredEvents } = require('../controllers/eventController');
 const { authenticateToken } = require('../middlewares/authMiddleware');
 const { authorizeRoles } = require('../middlewares/roleMiddleware');
 const { uploadVideo } = require('../utils/fileUpload');
@@ -14,5 +14,8 @@ router.get('/events', getEvents);
 
 // 📌 Get Event By ID
 router.get('/events/:id', getEventById);
+
+// 📌 Get Filtered Events (Public)
+router.get('/events/filtered', getFilteredEvents);
 
 module.exports = router;

@@ -149,67 +149,154 @@ exports.createBlockPlantation = async (req, res) => {
     }
 };
 
-// 📌 Get all Block Plantations
+// 📌 Get All Block Plantations with Advanced Filtering
 exports.getAllBlockPlantations = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
+        // Extract all filter parameters from query
+        const {
+            // Pagination
+            page = 1,
+            limit = 10,
+            
+            // User filters
+            userId,
+            organizationType,
+            
+            // Event filters
+            eventId,
+            campaignId,
+            
+            // Location filters
+            country,
+            state,
+            district,
+            block,
+            gramPanchayat,
+            village,
+            
+            // Date filters
+            startDate,
+            endDate,
+            
+            // Tree filters
+            treeSpecies,
+            minTrees,
+            maxTrees,
+            
+            // Area filters
+            minArea,
+            maxArea,
+            
+            // Status filter
+            status,
+            
+            // Sorting
+            sortBy = 'createdAt',
+            sortOrder = 'desc',
+            
+            // Geospatial
+            near,
+            maxDistance = 10000 // Default 10km
+        } = req.query;
 
         // Build filter object
         const filter = {};
-        if (req.query.organizationType) filter.organizationType = req.query.organizationType;
-        if (req.query.state) filter.state = req.query.state;
-        if (req.query.district) filter.district = req.query.district;
-        if (req.query.status) filter.status = req.query.status;
-
+        
+        // User filters
+        if (userId) filter.userId = userId;
+        if (organizationType) filter.organizationType = organizationType;
+        
+        // Event filters
+        if (eventId) filter.eventId = eventId;
+        if (campaignId) filter.campaignId = campaignId;
+        
+        // Location filters - using regex for partial matches
+        if (country) filter.country = new RegExp(country, 'i');
+        if (state) filter.state = new RegExp(state, 'i');
+        if (district) filter.district = new RegExp(district, 'i');
+        if (block) filter.block = new RegExp(block, 'i');
+        if (gramPanchayat) filter.gramPanchayat = new RegExp(gramPanchayat, 'i');
+        if (village) filter.village = new RegExp(village, 'i');
+        
         // Date range filter
-        if (req.query.startDate && req.query.endDate) {
-            filter.plantationDate = {
-                $gte: new Date(req.query.startDate),
-                $lte: new Date(req.query.endDate)
-            };
+        if (startDate || endDate) {
+            filter.plantationDate = {};
+            if (startDate) filter.plantationDate.$gte = new Date(startDate);
+            if (endDate) filter.plantationDate.$lte = new Date(endDate);
         }
-
-        // Area range filter
-        if (req.query.minArea || req.query.maxArea) {
+        
+        // Tree count range
+        if (minTrees || maxTrees) {
+            filter.numberOfTrees = {};
+            if (minTrees) filter.numberOfTrees.$gte = parseInt(minTrees);
+            if (maxTrees) filter.numberOfTrees.$lte = parseInt(maxTrees);
+        }
+        
+        // Area range
+        if (minArea || maxArea) {
             filter['plantationArea.value'] = {};
-            if (req.query.minArea) filter['plantationArea.value'].$gte = parseFloat(req.query.minArea);
-            if (req.query.maxArea) filter['plantationArea.value'].$lte = parseFloat(req.query.maxArea);
+            if (minArea) filter['plantationArea.value'].$gte = parseFloat(minArea);
+            if (maxArea) filter['plantationArea.value'].$lte = parseFloat(maxArea);
         }
-
-        // Geospatial query
-        if (req.query.near) {
-            const [longitude, latitude] = req.query.near.split(',').map(Number);
+        
+        // Status filter
+        if (status) filter.status = status;
+        
+        // Tree species filter
+        if (treeSpecies) {
+            filter['treeSpecies.name'] = new RegExp(treeSpecies, 'i');
+        }
+        
+        // Geospatial query - near a point
+        if (near) {
+            const [longitude, latitude] = near.split(',').map(coord => parseFloat(coord));
             filter.location = {
                 $near: {
                     $geometry: {
                         type: 'Point',
                         coordinates: [longitude, latitude]
                     },
-                    $maxDistance: 10000 // 10km radius
+                    $maxDistance: parseInt(maxDistance)
                 }
             };
         }
-
-        const [plantations, total] = await Promise.all([
-            BlockPlantation.find(filter)
-                .populate('state district village gramPanchayat landOwnership createdBy verifiedBy')
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            BlockPlantation.countDocuments(filter)
-        ]);
-
+        
+        // Calculate pagination
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        
+        // Prepare sort object
+        const sort = {};
+        sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+        
+        // Execute query with pagination
+        const plantations = await BlockPlantation.find(filter)
+            .sort(sort)
+            .skip(skip)
+            .limit(parseInt(limit))
+            .populate('userId', 'name email')
+            .populate('eventId', 'name description')
+            .populate('campaignId', 'name description');
+        
+        // Get total count for pagination
+        const totalCount = await BlockPlantation.countDocuments(filter);
+        
+        // Calculate pagination metadata
+        const totalPages = Math.ceil(totalCount / parseInt(limit));
+        const hasNextPage = page < totalPages;
+        const hasPrevPage = page > 1;
+        
         res.status(200).json({
             status: 'success',
-            data: plantations,
+            results: plantations.length,
             pagination: {
-                currentPage: page,
-                totalPages: Math.ceil(total / limit),
-                totalRecords: total,
-                recordsPerPage: limit
-            }
+                totalCount,
+                totalPages,
+                currentPage: parseInt(page),
+                limit: parseInt(limit),
+                hasNextPage,
+                hasPrevPage
+            },
+            data: plantations
         });
     } catch (error) {
         res.status(400).json({
@@ -422,6 +509,249 @@ exports.downloadKML = async (req, res) => {
         });
         await activity.save();
 
+    } catch (error) {
+        res.status(400).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+};
+
+// 📌 Update Block Plantation
+exports.updateBlockPlantation = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+        
+        // Find the plantation
+        const plantation = await BlockPlantation.findById(id);
+        if (!plantation) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Block plantation not found'
+            });
+        }
+        
+        // Handle tree species updates
+        if (updateData.treeSpecies) {
+            // Calculate total trees from species
+            const totalTreesFromSpecies = updateData.treeSpecies.reduce(
+                (sum, species) => sum + species.quantity, 0
+            );
+            
+            // Ensure total matches numberOfTrees
+            if (updateData.numberOfTrees && 
+                updateData.numberOfTrees !== totalTreesFromSpecies) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Total number of trees must match sum of tree species quantities'
+                });
+            }
+            
+            // If numberOfTrees not provided, update it
+            if (!updateData.numberOfTrees) {
+                updateData.numberOfTrees = totalTreesFromSpecies;
+            }
+        }
+        
+        // Handle boundaries update
+        if (updateData.boundaries && updateData.boundaries.coordinates) {
+            // Validate that the polygon is closed
+            const coordinates = updateData.boundaries.coordinates[0];
+            const firstPoint = coordinates[0];
+            const lastPoint = coordinates[coordinates.length - 1];
+            
+            if (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1]) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Polygon must be closed (first and last points must be the same)'
+                });
+            }
+        }
+        
+        // Update the plantation
+        const updatedPlantation = await BlockPlantation.findByIdAndUpdate(
+            id,
+            updateData,
+            { new: true, runValidators: true }
+        );
+        
+        // Log the activity
+        const activity = new Activity({
+            type: 'BLOCK_PLANTATION_UPDATED',
+            userId: req.user._id,
+            details: {
+                plantationId: id,
+                updates: Object.keys(updateData)
+            }
+        });
+        await activity.save();
+        
+        res.status(200).json({
+            status: 'success',
+            data: updatedPlantation
+        });
+    } catch (error) {
+        res.status(400).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+};
+
+// 📌 Get Dashboard Statistics with Filters
+exports.getDashboardStatistics = async (req, res) => {
+    try {
+        // Extract filter parameters
+        const {
+            // User filters
+            userId,
+            organizationType,
+            
+            // Location filters
+            country,
+            state,
+            district,
+            block,
+            gramPanchayat,
+            village,
+            
+            // Date filters
+            startDate,
+            endDate,
+            
+            // Status filter
+            status
+        } = req.query;
+
+        // Build filter object
+        const filter = {};
+        
+        // User filters
+        if (userId) filter.userId = userId;
+        if (organizationType) filter.organizationType = organizationType;
+        
+        // Location filters
+        if (country) filter.country = new RegExp(country, 'i');
+        if (state) filter.state = new RegExp(state, 'i');
+        if (district) filter.district = new RegExp(district, 'i');
+        if (block) filter.block = new RegExp(block, 'i');
+        if (gramPanchayat) filter.gramPanchayat = new RegExp(gramPanchayat, 'i');
+        if (village) filter.village = new RegExp(village, 'i');
+        
+        // Date range filter
+        if (startDate || endDate) {
+            filter.plantationDate = {};
+            if (startDate) filter.plantationDate.$gte = new Date(startDate);
+            if (endDate) filter.plantationDate.$lte = new Date(endDate);
+        }
+        
+        // Status filter
+        if (status) filter.status = status;
+        
+        // Aggregate statistics
+        const statistics = await BlockPlantation.aggregate([
+            { $match: filter },
+            { $group: {
+                _id: null,
+                totalPlantations: { $sum: 1 },
+                totalTrees: { $sum: '$numberOfTrees' },
+                totalArea: { $sum: '$plantationArea.value' },
+                averageSurvivalRate: { $avg: '$survivalRate' },
+                verifiedCount: {
+                    $sum: { $cond: [{ $eq: ['$status', 'VERIFIED'] }, 1, 0] }
+                },
+                pendingCount: {
+                    $sum: { $cond: [{ $eq: ['$status', 'PENDING'] }, 1, 0] }
+                },
+                rejectedCount: {
+                    $sum: { $cond: [{ $eq: ['$status', 'REJECTED'] }, 1, 0] }
+                }
+            }},
+            { $project: {
+                _id: 0,
+                totalPlantations: 1,
+                totalTrees: 1,
+                totalArea: 1,
+                averageSurvivalRate: { $round: ['$averageSurvivalRate', 2] },
+                verifiedCount: 1,
+                pendingCount: 1,
+                rejectedCount: 1
+            }}
+        ]);
+        
+        // Get tree species distribution
+        const treeSpeciesDistribution = await BlockPlantation.aggregate([
+            { $match: filter },
+            { $unwind: '$treeSpecies' },
+            { $group: {
+                _id: '$treeSpecies.name',
+                count: { $sum: '$treeSpecies.quantity' }
+            }},
+            { $sort: { count: -1 } },
+            { $limit: 10 },
+            { $project: {
+                _id: 0,
+                species: '$_id',
+                count: 1
+            }}
+        ]);
+        
+        // Get location distribution
+        const locationDistribution = await BlockPlantation.aggregate([
+            { $match: filter },
+            { $group: {
+                _id: '$state',
+                count: { $sum: 1 },
+                trees: { $sum: '$numberOfTrees' }
+            }},
+            { $sort: { count: -1 } },
+            { $project: {
+                _id: 0,
+                state: '$_id',
+                count: 1,
+                trees: 1
+            }}
+        ]);
+        
+        // Get monthly trend
+        const monthlyTrend = await BlockPlantation.aggregate([
+            { $match: filter },
+            { $group: {
+                _id: {
+                    year: { $year: '$plantationDate' },
+                    month: { $month: '$plantationDate' }
+                },
+                count: { $sum: 1 },
+                trees: { $sum: '$numberOfTrees' }
+            }},
+            { $sort: { '_id.year': 1, '_id.month': 1 } },
+            { $project: {
+                _id: 0,
+                year: '$_id.year',
+                month: '$_id.month',
+                count: 1,
+                trees: 1
+            }}
+        ]);
+        
+        res.status(200).json({
+            status: 'success',
+            data: {
+                summary: statistics.length > 0 ? statistics[0] : {
+                    totalPlantations: 0,
+                    totalTrees: 0,
+                    totalArea: 0,
+                    averageSurvivalRate: 0,
+                    verifiedCount: 0,
+                    pendingCount: 0,
+                    rejectedCount: 0
+                },
+                treeSpeciesDistribution,
+                locationDistribution,
+                monthlyTrend
+            }
+        });
     } catch (error) {
         res.status(400).json({
             status: 'error',
