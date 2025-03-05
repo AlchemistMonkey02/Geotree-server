@@ -38,6 +38,8 @@ const { insertPredefinedData, insertPlantData, insertLandOwnershipData } = requi
 const plantRoutes = require('./routes/plantRoutes');
 const individualPlantationRoutes = require('./routes/individualPlantationRoutes');
 const predefinedRoutes = require("./routes/predefinedRoutes");
+const nurseryRoutes = require("./routes/nurseryRoutes");
+const nurseryDetailsRoutes = require("./routes/nurseryDetailsRoutes");
 const app = express();
 
 // ✅ Middleware
@@ -103,6 +105,8 @@ app.use("/api/individual-plantations", individualPlantationRoutes);
 // predefined
 
 app.use("/api/predefined", predefinedRoutes);
+app.use("/api/nurseries", nurseryRoutes);
+app.use("/api/nursery-details", nurseryDetailsRoutes);
 
 // ✅ Refresh Token Route
 app.post("/api/refresh-token", refreshTokenMiddleware);

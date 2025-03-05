@@ -4,15 +4,9 @@ const { State, District, Village, GramPanchayat, Department } = require('../mode
 exports.getAllStates = async (req, res) => {
     try {
         const states = await State.find().sort('name');
-        res.status(200).json({
-            status: 'success',
-            data: states
-        });
+        res.status(200).json({ status: 'success', data: states });
     } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
+        res.status(400).json({ status: 'error', message: error.message });
     }
 };
 
@@ -21,15 +15,9 @@ exports.getDistrictsByState = async (req, res) => {
     try {
         const { stateId } = req.params;
         const districts = await District.find({ state: stateId }).sort('name');
-        res.status(200).json({
-            status: 'success',
-            data: districts
-        });
+        res.status(200).json({ status: 'success', data: districts });
     } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
+        res.status(400).json({ status: 'error', message: error.message });
     }
 };
 
@@ -38,15 +26,9 @@ exports.getVillagesByDistrict = async (req, res) => {
     try {
         const { districtId } = req.params;
         const villages = await Village.find({ district: districtId }).sort('name');
-        res.status(200).json({
-            status: 'success',
-            data: villages
-        });
+        res.status(200).json({ status: 'success', data: villages });
     } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
+        res.status(400).json({ status: 'error', message: error.message });
     }
 };
 
@@ -55,15 +37,9 @@ exports.getGPsByVillage = async (req, res) => {
     try {
         const { villageId } = req.params;
         const gps = await GramPanchayat.find({ village: villageId }).sort('name');
-        res.status(200).json({
-            status: 'success',
-            data: gps
-        });
+        res.status(200).json({ status: 'success', data: gps });
     } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
+        res.status(400).json({ status: 'error', message: error.message });
     }
 };
 
@@ -71,26 +47,16 @@ exports.getGPsByVillage = async (req, res) => {
 exports.getDepartments = async (req, res) => {
     try {
         const { stateId, districtId, villageId, gpId } = req.query;
-        
         let filter = {};
         if (stateId) filter.state = stateId;
         if (districtId) filter.district = districtId;
         if (villageId) filter.village = villageId;
         if (gpId) filter.gp = gpId;
 
-        const departments = await Department.find(filter)
-            .sort('name')
-            .populate('state district village gp');
-
-        res.status(200).json({
-            status: 'success',
-            data: departments
-        });
+        const departments = await Department.find(filter).sort('name').populate('state district village gp');
+        res.status(200).json({ status: 'success', data: departments });
     } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
+        res.status(400).json({ status: 'error', message: error.message });
     }
 };
 
@@ -98,15 +64,9 @@ exports.getDepartments = async (req, res) => {
 exports.createState = async (req, res) => {
     try {
         const state = await State.create(req.body);
-        res.status(201).json({
-            status: 'success',
-            data: state
-        });
+        res.status(201).json({ status: 'success', data: state });
     } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
+        res.status(400).json({ status: 'error', message: error.message });
     }
 };
 
@@ -114,15 +74,9 @@ exports.createState = async (req, res) => {
 exports.createDistrict = async (req, res) => {
     try {
         const district = await District.create(req.body);
-        res.status(201).json({
-            status: 'success',
-            data: district
-        });
+        res.status(201).json({ status: 'success', data: district });
     } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
+        res.status(400).json({ status: 'error', message: error.message });
     }
 };
 
@@ -130,15 +84,9 @@ exports.createDistrict = async (req, res) => {
 exports.createVillage = async (req, res) => {
     try {
         const village = await Village.create(req.body);
-        res.status(201).json({
-            status: 'success',
-            data: village
-        });
+        res.status(201).json({ status: 'success', data: village });
     } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
+        res.status(400).json({ status: 'error', message: error.message });
     }
 };
 
@@ -146,15 +94,9 @@ exports.createVillage = async (req, res) => {
 exports.createGP = async (req, res) => {
     try {
         const gp = await GramPanchayat.create(req.body);
-        res.status(201).json({
-            status: 'success',
-            data: gp
-        });
+        res.status(201).json({ status: 'success', data: gp });
     } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
+        res.status(400).json({ status: 'error', message: error.message });
     }
 };
 
@@ -162,14 +104,38 @@ exports.createGP = async (req, res) => {
 exports.createDepartment = async (req, res) => {
     try {
         const department = await Department.create(req.body);
-        res.status(201).json({
-            status: 'success',
-            data: department
-        });
+        res.status(201).json({ status: 'success', data: department });
     } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
+        res.status(400).json({ status: 'error', message: error.message });
     }
-}; 
+};
+
+// ✅ Get all districts
+exports.getAllDistricts = async (req, res) => {
+    try {
+        const districts = await District.find({}, { district_id: 1, name: 1, _id: 0 }).sort('name');
+        res.status(200).json({ status: 'success', data: districts });
+    } catch (error) {
+        res.status(400).json({ status: 'error', message: error.message });
+    }
+};
+
+// ✅ Get all villages
+exports.getAllVillages = async (req, res) => {
+    try {
+        const villages = await Village.find({}, { village_id: 1, name: 1, _id: 0 }).sort('name');
+        res.status(200).json({ status: 'success', data: villages });
+    } catch (error) {
+        res.status(400).json({ status: 'error', message: error.message });
+    }
+};
+
+// ✅ Get all Gram Panchayats (GPs)
+exports.getAllGPS = async (req, res) => {
+    try {
+        const gps = await GramPanchayat.find({}, { gp_id: 1, name: 1, _id: 0 }).sort('name');
+        res.status(200).json({ status: 'success', data: gps });
+    } catch (error) {
+        res.status(400).json({ status: 'error', message: error.message });
+    }
+};

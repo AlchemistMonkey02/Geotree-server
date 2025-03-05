@@ -15,14 +15,16 @@ router.post('/', async (req, res) => {
 });
 
 // Get all plants
+// Get all plants (only plant_id and name)
 router.get('/', async (req, res) => {
     try {
-        const plants = await Plant.find();
+        const plants = await Plant.find({}, { plant_id: 1, name: 1, _id: 0 }); // Exclude _id
         res.status(200).json(plants);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 });
+
 
 // Get a single plant by ID
 router.get('/:id', async (req, res) => {

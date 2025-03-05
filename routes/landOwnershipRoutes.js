@@ -7,41 +7,21 @@ const {
     getAllLandOwnerships,
     getLandOwnershipById,
     updateLandOwnership,
-    deleteLandOwnership,
-    verifyLandOwnership
-} = require('../controllers/landOwnershipController');
+    deleteLandOwnership
+} = require('../controllers/landOwnershipController'); // ✅ Ensure the correct import path!
 
-// Protected routes (require authentication)
+// ✅ Protect all routes with authentication
 router.use(authenticateToken);
 
-// Routes accessible by authenticated users
+// ✅ Routes accessible by all authenticated users
 router.get('/', getAllLandOwnerships);
 router.get('/:id', getLandOwnershipById);
 
-// Routes for creating and managing land ownership (admin and authorized roles only)
-router.post(
-    '/',
-    authorizeRoles(['admin', 'department_user']),
-    createLandOwnership
-);
+// ✅ Routes restricted to 'admin' and 'department_user' roles
+router.post('/', authorizeRoles(['admin', 'department_user']), createLandOwnership);
+router.put('/:id', authorizeRoles(['admin', 'department_user']), updateLandOwnership);
 
-router.put(
-    '/:id',
-    authorizeRoles(['admin', 'department_user']),
-    updateLandOwnership
-);
+// ✅ Delete allowed only for 'admin'
+router.delete('/:id', authorizeRoles(['admin']), deleteLandOwnership);
 
-router.delete(
-    '/:id',
-    authorizeRoles(['admin']),
-    deleteLandOwnership
-);
-
-// Verification route (admin and verifier roles only)
-router.post(
-    '/:id/verify',
-    authorizeRoles(['admin', 'verifier']),
-    verifyLandOwnership
-);
-
-module.exports = router; 
+module.exports = router;

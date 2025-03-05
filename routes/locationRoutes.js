@@ -12,7 +12,10 @@ const {
     createDistrict,
     createVillage,
     createGP,
-    createDepartment
+    createDepartment,
+    getAllDistricts,
+    getAllVillages,
+    getAllGPS
 } = require('../controllers/locationController');
 
 // Public routes for fetching data
@@ -21,6 +24,9 @@ router.get('/districts/:stateId', getDistrictsByState);
 router.get('/villages/:districtId', getVillagesByDistrict);
 router.get('/gps/:villageId', getGPsByVillage);
 router.get('/departments', getDepartments);
+router.get('/districts', getAllDistricts);
+router.get('/villages', getAllVillages);
+router.get('/gps', getAllGPS);
 
 // Protected routes for creating data (admin only)
 router.use(authenticateToken);

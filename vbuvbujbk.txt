@@ -1,0 +1,9 @@
+const mongoose = require('mongoose');
+
+const plantSchema = new mongoose.Schema({
+    plant_id: { type: String, unique: true, required: true }, // Ensure plant_id is stored
+    name: { type: String, required: true }
+});
+
+const Plant = mongoose.model('Plant', plantSchema);
+module.exports = Plant;

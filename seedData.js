@@ -15,10 +15,10 @@ const seedData = async () => {
         // Predefined data
         const statesData = [
             { name: 'State 1' },
-            { name: 'State 2' },
-            { name: 'State 3' },
-            { name: 'State 4' },
-            { name: 'State 5' }
+            { name: 'State 2' }
+            // { name: 'State 3' },
+            // { name: 'State 4' },
+            // { name: 'State 5' }
         ];
 
         const insertedStates = await State.insertMany(statesData);
@@ -32,10 +32,10 @@ const seedData = async () => {
 
         const districtsData = [
             { name: 'District 1', state: stateMap['State 1'] },
-            { name: 'District 2', state: stateMap['State 2'] },
-            { name: 'District 3', state: stateMap['State 3'] },
-            { name: 'District 4', state: stateMap['State 4'] },
-            { name: 'District 5', state: stateMap['State 5'] }
+            { name: 'District 2', state: stateMap['State 2'] }
+            // { name: 'District 3', state: stateMap['State 3'] },
+            // { name: 'District 4', state: stateMap['State 4'] },
+            // { name: 'District 5', state: stateMap['State 5'] }
         ];
 
         const insertedDistricts = await District.insertMany(districtsData);
@@ -49,10 +49,10 @@ const seedData = async () => {
 
         const villagesData = [
             { name: 'Village 1', district: districtMap['District 1'] },
-            { name: 'Village 2', district: districtMap['District 2'] },
-            { name: 'Village 3', district: districtMap['District 3'] },
-            { name: 'Village 4', district: districtMap['District 4'] },
-            { name: 'Village 5', district: districtMap['District 5'] }
+            { name: 'Village 2', district: districtMap['District 2'] }
+            // { name: 'Village 3', district: districtMap['District 3'] },
+            // { name: 'Village 4', district: districtMap['District 4'] },
+            // { name: 'Village 5', district: districtMap['District 5'] }
         ];
 
         await Village.insertMany(villagesData);
@@ -60,10 +60,10 @@ const seedData = async () => {
 
         const departmentsData = [
             { name: 'Department 1' },
-            { name: 'Department 2' },
-            { name: 'Department 3' },
-            { name: 'Department 4' },
-            { name: 'Department 5' }
+            { name: 'Department 2' }
+            // { name: 'Department 3' },
+            // { name: 'Department 4' },
+            // { name: 'Department 5' }
         ];
 
         await Department.insertMany(departmentsData);

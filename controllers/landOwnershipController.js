@@ -1,20 +1,11 @@
 const LandOwnership = require('../models/landOwnershipModel');
 
-// Create new land ownership record
+// 🚀 Create new land ownership record
 exports.createLandOwnership = async (req, res) => {
     try {
-        const landOwnershipData = {
-            ownershipType: req.body.ownershipType,
-            ownerName: req.body.ownerName,
-            landArea: req.body.landArea,
-            boundaries: {
-                type: 'Polygon',
-                coordinates: req.body.boundaries.coordinates
-            },
-            landUseType: req.body.landUseType
-        };
+        const { ownershipType } = req.body;
 
-        const landOwnership = new LandOwnership(landOwnershipData);
+        const landOwnership = new LandOwnership({ ownershipType });
         await landOwnership.save();
 
         res.status(201).json({
@@ -29,50 +20,14 @@ exports.createLandOwnership = async (req, res) => {
     }
 };
 
-// Get all land ownership records with filters
+// 🚀 Get all land ownership records
 exports.getAllLandOwnerships = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
-
-        // Build filter object
-        const filter = {};
-        if (req.query.ownershipType) filter.ownershipType = req.query.ownershipType;
-        if (req.query.landUseType) filter.landUseType = req.query.landUseType;
-        if (req.query.verificationStatus) filter.verificationStatus = req.query.verificationStatus;
-
-        // Add geospatial query if coordinates are provided
-        if (req.query.near) {
-            const [longitude, latitude] = req.query.near.split(',').map(Number);
-            filter.boundaries = {
-                $geoIntersects: {
-                    $geometry: {
-                        type: 'Point',
-                        coordinates: [longitude, latitude]
-                    }
-                }
-            };
-        }
-
-        const [landOwnerships, total] = await Promise.all([
-            LandOwnership.find(filter)
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit)
-                .populate('verifiedBy', 'firstName lastName email'),
-            LandOwnership.countDocuments(filter)
-        ]);
+        const landOwnerships = await LandOwnership.find({}, { ownershipType: 1, _id: 0 });
 
         res.status(200).json({
             status: 'success',
-            data: landOwnerships,
-            pagination: {
-                currentPage: page,
-                totalPages: Math.ceil(total / limit),
-                totalRecords: total,
-                recordsPerPage: limit
-            }
+            data: landOwnerships
         });
     } catch (error) {
         res.status(400).json({
@@ -82,11 +37,10 @@ exports.getAllLandOwnerships = async (req, res) => {
     }
 };
 
-// Get land ownership by ID
+// 🚀 Get land ownership by ID
 exports.getLandOwnershipById = async (req, res) => {
     try {
-        const landOwnership = await LandOwnership.findById(req.params.id)
-            .populate('verifiedBy', 'firstName lastName email');
+        const landOwnership = await LandOwnership.findById(req.params.id);
 
         if (!landOwnership) {
             return res.status(404).json({
@@ -107,25 +61,16 @@ exports.getLandOwnershipById = async (req, res) => {
     }
 };
 
-// Update land ownership
+// 🚀 Update land ownership record
 exports.updateLandOwnership = async (req, res) => {
     try {
-        const updateData = {
-            ownershipType: req.body.ownershipType,
-            ownerName: req.body.ownerName,
-            landArea: req.body.landArea,
-            boundaries: {
-                type: 'Polygon',
-                coordinates: req.body.boundaries.coordinates
-            },
-            landUseType: req.body.landUseType
-        };
+        const { ownershipType } = req.body;
 
         const landOwnership = await LandOwnership.findByIdAndUpdate(
             req.params.id,
-            updateData,
+            { ownershipType },
             { new: true, runValidators: true }
-        ).populate('verifiedBy', 'firstName lastName email');
+        );
 
         if (!landOwnership) {
             return res.status(404).json({
@@ -146,35 +91,7 @@ exports.updateLandOwnership = async (req, res) => {
     }
 };
 
-// Find overlapping land ownerships
-exports.findOverlappingLandOwnerships = async (req, res) => {
-    try {
-        const { coordinates } = req.body;
-
-        const overlappingLandOwnerships = await LandOwnership.find({
-            boundaries: {
-                $geoIntersects: {
-                    $geometry: {
-                        type: 'Polygon',
-                        coordinates: coordinates
-                    }
-                }
-            }
-        });
-
-        res.status(200).json({
-            status: 'success',
-            data: overlappingLandOwnerships
-        });
-    } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
-    }
-};
-
-// Delete land ownership
+// 🚀 Delete land ownership record
 exports.deleteLandOwnership = async (req, res) => {
     try {
         const landOwnership = await LandOwnership.findByIdAndDelete(req.params.id);
@@ -197,38 +114,3 @@ exports.deleteLandOwnership = async (req, res) => {
         });
     }
 };
-
-// Verify land ownership
-exports.verifyLandOwnership = async (req, res) => {
-    try {
-        const { status, comments } = req.body;
-        
-        const landOwnership = await LandOwnership.findByIdAndUpdate(
-            req.params.id,
-            {
-                verificationStatus: status,
-                verificationComments: comments,
-                verifiedBy: req.user._id,
-                verificationDate: Date.now()
-            },
-            { new: true, runValidators: true }
-        ).populate('verifiedBy', 'firstName lastName email');
-
-        if (!landOwnership) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'Land ownership record not found'
-            });
-        }
-
-        res.status(200).json({
-            status: 'success',
-            data: landOwnership
-        });
-    } catch (error) {
-        res.status(400).json({
-            status: 'error',
-            message: error.message
-        });
-    }
-}; 
