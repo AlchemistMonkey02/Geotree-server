@@ -16,6 +16,8 @@ const {
 } = require("./middlewares/authMiddleware");
 const { authorizeRoles, isOriginalAdmin } = require("./middlewares/roleMiddleware");
 const { generalLimiter, loginLimiter } = require("./middlewares/rateLimiter");
+const masterApiKeyMiddleware = require("./middlewares/masterApiKeyMiddleware");
+const apiKeyUsageMiddleware = require("./middlewares/apiKeyUsageMiddleware");
 
 // ✅ Import Routes
 const userRoutes = require("./routes/userRoutes");
@@ -41,6 +43,8 @@ const predefinedRoutes = require("./routes/predefinedRoutes");
 const nurseryRoutes = require("./routes/nurseryRoutes");
 const nurseryDetailsRoutes = require("./routes/nurseryDetailsRoutes");
 const organizationRoutes = require('./routes/organizationRoutes');
+const apiKeyRoutes = require("./routes/apiKeyRoutes");
+const apiKeyAdminRoutes = require("./routes/apiKeyAdminRoutes");
 
 const app = express();
 
@@ -58,6 +62,9 @@ app.use(
 );
 app.use(cookieParser());
 app.use(generalLimiter);
+app.use(masterApiKeyMiddleware);
+app.use(apiKeyUsageMiddleware);
+
 const connectDB = async () => {
   if (mongoose.connection.readyState === 1) {
       console.log("🔄 Already connected to MongoDB.");
@@ -110,6 +117,8 @@ app.use("/api/predefined", predefinedRoutes);
 app.use("/api/nurseries", nurseryRoutes);
 app.use("/api/nursery-details", nurseryDetailsRoutes);
 app.use("/api/organizations", organizationRoutes);
+app.use("/api/api-keys", apiKeyRoutes);
+app.use("/api/admin/api-keys", apiKeyAdminRoutes);
 
 // ✅ Refresh Token Route
 app.post("/api/refresh-token", refreshTokenMiddleware);
