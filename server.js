@@ -49,6 +49,11 @@ const apiKeyAdminRoutes = require("./routes/apiKeyAdminRoutes");
 const app = express();
 
 // ✅ Middleware
+
+
+// ✅ Trust the first proxy (important for rate limiting & IP tracking)
+app.set('trust proxy', 1);
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(helmet());
