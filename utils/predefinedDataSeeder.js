@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const { State, District, Village, GramPanchayat, Department } = require('../models/locationModels');
 const Plant = require('../models/plantModel');
 const LandOwnership = require('../models/landOwnershipModel');
+const Organization = require('../models/organizationModel');
 
 // ✅ Function to check and reuse the existing database connection
 const connectDB = async () => {
@@ -27,7 +28,7 @@ const insertPredefinedData = async () => {
         // Insert States
         const stateNames = Array.from({ length: 2 }, (_, i) => ({ name: `State ${i + 1}` }));
         const states = await State.insertMany(stateNames);
-        console.log("✅ 10 States Inserted");
+        console.log(`✅ ${states.length} States Inserted`);
 
         // Insert Districts
         let districts = [];
@@ -37,7 +38,7 @@ const insertPredefinedData = async () => {
             }
         });
         const insertedDistricts = await District.insertMany(districts);
-        console.log("✅ 100 Districts Inserted (10 per state)");
+        console.log(`✅ ${insertedDistricts.length} Districts Inserted`);
 
         // Insert Villages
         let villages = [];
@@ -47,7 +48,7 @@ const insertPredefinedData = async () => {
             }
         });
         const insertedVillages = await Village.insertMany(villages);
-        console.log("✅ 1000 Villages Inserted (10 per district)");
+        console.log(`✅ ${insertedVillages.length} Villages Inserted`);
 
         // Insert Gram Panchayats
         let gps = [];
@@ -57,7 +58,7 @@ const insertPredefinedData = async () => {
             }
         });
         await GramPanchayat.insertMany(gps);
-        console.log("✅ 10000 Gram Panchayats Inserted (10 per village)");
+        console.log(`✅ ${gps.length} Gram Panchayats Inserted`);
 
         // Insert Departments
         let departments = [];
@@ -71,7 +72,7 @@ const insertPredefinedData = async () => {
             }
         });
         await Department.insertMany(departments);
-        console.log("✅ 1000 Departments Inserted (10 per district)");
+        console.log(`✅ ${departments.length} Departments Inserted`);
 
         console.log("🎉 Predefined location data inserted successfully!");
     } catch (err) {
@@ -105,7 +106,6 @@ const insertPlantData = async () => {
     }
 };
 
-
 // 🚀 Function to insert predefined land ownership data
 const insertLandOwnershipData = async () => {
     try {
@@ -132,9 +132,58 @@ const insertLandOwnershipData = async () => {
         console.log("✅ 5 Land Ownership Records Inserted");
     } catch (err) {
         console.error("❌ Error inserting land ownership data:", err.message);
-    } finally {
-        mongoose.connection.close(); // Close connection after inserting
     }
 };
 
-module.exports = { insertPredefinedData, insertPlantData, insertLandOwnershipData };
+// 🚀 Function to insert predefined organization data
+const insertOrganizationData = async () => {
+    try {
+        await connectDB(); // Ensure database connection
+
+        console.log("📌 Inserting predefined organization data...");
+        
+        const organizationData = [
+            { organizationType: 'PRIVATE' },
+            { organizationType: 'GOVERNMENT' },
+            { organizationType: 'NGO' },
+        ];
+
+        // Prevent duplicate entries
+        const existingRecords = await Organization.find({ 
+            organizationType: { $in: organizationData.map(d => d.organizationType) } 
+        });
+
+        if (existingRecords.length === organizationData.length) {
+            console.log("⚠️ Organization types already exist. Skipping insertion.");
+            return;
+        }
+
+        await Organization.insertMany(organizationData);
+        console.log("✅ Organization records inserted successfully!");
+    } catch (err) {
+        console.error("❌ Error inserting organization data:", err.message);
+    }
+};
+
+// 🚀 Function to insert all data in sequence
+const insertAllData = async () => {
+    try {
+        await connectDB();
+        
+        await insertPredefinedData();
+        await insertPlantData();
+        await insertLandOwnershipData();
+        await insertOrganizationData();
+
+        console.log("🎉 All predefined data inserted successfully!");
+    } catch (err) {
+        console.error("❌ Error inserting all data:", err.message);
+    } finally {
+        mongoose.connection.close(); // Close DB connection once all inserts are done
+    }
+};
+
+// Export functions
+module.exports = { insertPredefinedData, insertPlantData, insertLandOwnershipData, insertOrganizationData, insertAllData };
+
+//

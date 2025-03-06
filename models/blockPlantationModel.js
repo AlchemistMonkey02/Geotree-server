@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const Organization = require('./organizationModel');
 
 const treeSpeciesSchema = new mongoose.Schema({
     name: {
@@ -13,10 +14,10 @@ const treeSpeciesSchema = new mongoose.Schema({
 });
 
 const blockPlantationSchema = new mongoose.Schema({
-    organizationType: {
-        type: String,
-        enum: ['GOVERNMENT', 'NGO', 'INDIVIDUAL'],
-        required: [true, 'Organization type is required']
+    organization: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Organization',
+        required: [true, 'Organization is required']
     },
     state: {
         type: mongoose.Schema.Types.ObjectId,
@@ -42,25 +43,25 @@ const blockPlantationSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Department',
         required: function() {
-            return this.organizationType === 'GOVERNMENT';
+            return this.organization.type === 'GOVERNMENT';
         }
     },
     ngoName: {
         type: String,
         required: function() {
-            return this.organizationType === 'NGO';
+            return this.organization.type === 'NGO';
         }
     },
     ngoRegistrationNumber: {
         type: String,
         required: function() {
-            return this.organizationType === 'NGO';
+            return this.organization.type === 'NGO';
         }
     },
     individualName: {
         type: String,
         required: function() {
-            return this.organizationType === 'INDIVIDUAL';
+            return this.organization.type === 'INDIVIDUAL';
         }
     },
     contactNumber: {

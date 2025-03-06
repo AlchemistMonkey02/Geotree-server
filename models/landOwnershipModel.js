@@ -1,16 +1,17 @@
 const mongoose = require('mongoose');
+const Organization = require('./organizationModel'); // Ensure this is the correct path
 
 const landOwnershipSchema = new mongoose.Schema({
     ownershipType: {
         type: String,
         enum: [
-            'PRIVATE',
             'GOVERNMENT',
-            'COMMUNITY',
-            'TEMPLE',
-            'EDUCATIONAL_INSTITUTION',
+            'PRIVATE',
+            'NGO',
             'CORPORATE',
-            'FOREST_DEPARTMENT',
+            'EDUCATIONAL_INSTITUTION',
+            'HEALTHCARE',
+            'RESEARCH_INSTITUTE',
             'PANCHAYAT',
             'OTHER'
         ],
@@ -18,6 +19,6 @@ const landOwnershipSchema = new mongoose.Schema({
     }
 }, { timestamps: true }); // ✅ Auto add createdAt & updatedAt
 
-const LandOwnership = mongoose.model('LandOwnership', landOwnershipSchema);
+const LandOwnershipModel = mongoose.model('LandOwnership', landOwnershipSchema);
 
-module.exports = LandOwnership;
+module.exports = LandOwnershipModel;

@@ -40,6 +40,8 @@ const individualPlantationRoutes = require('./routes/individualPlantationRoutes'
 const predefinedRoutes = require("./routes/predefinedRoutes");
 const nurseryRoutes = require("./routes/nurseryRoutes");
 const nurseryDetailsRoutes = require("./routes/nurseryDetailsRoutes");
+const organizationRoutes = require('./routes/organizationRoutes');
+
 const app = express();
 
 // ✅ Middleware
@@ -107,6 +109,7 @@ app.use("/api/individual-plantations", individualPlantationRoutes);
 app.use("/api/predefined", predefinedRoutes);
 app.use("/api/nurseries", nurseryRoutes);
 app.use("/api/nursery-details", nurseryDetailsRoutes);
+app.use("/api/organizations", organizationRoutes);
 
 // ✅ Refresh Token Route
 app.post("/api/refresh-token", refreshTokenMiddleware);

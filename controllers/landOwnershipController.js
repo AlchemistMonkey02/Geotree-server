@@ -25,10 +25,7 @@ exports.getAllLandOwnerships = async (req, res) => {
     try {
         const landOwnerships = await LandOwnership.find({}, { ownershipType: 1, _id: 0 });
 
-        res.status(200).json({
-            status: 'success',
-            data: landOwnerships
-        });
+        res.status(200).json(landOwnerships);
     } catch (error) {
         res.status(400).json({
             status: 'error',
