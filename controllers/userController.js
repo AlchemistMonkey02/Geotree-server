@@ -198,10 +198,14 @@ exports.logout = async (req, res) => {
         const user = await User.findOne({ refreshTokens: refreshToken });
         if (!user) return res.status(400).json({ message: 'Invalid refresh token' });
 
+        // Remove the refresh token from the user's record
         user.refreshTokens = user.refreshTokens.filter(token => token !== refreshToken);
         await user.save();
 
+        // Clear the refresh token cookie
         res.clearCookie('refreshToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+        
+        // Send a success response
         res.status(200).json({ message: 'Logout successful' });
     } catch (err) {
         res.status(500).json({ message: 'Error logging out', error: err.message });

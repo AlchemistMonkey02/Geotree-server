@@ -28,9 +28,12 @@ router.get('/districts', getAllDistricts);
 router.get('/villages', getAllVillages);
 router.get('/gps', getAllGPS);
 
+
+
 // Protected routes for creating data (admin only)
 router.use(authenticateToken);
 router.use(authorizeRoles(['admin']));
+
 
 router.post('/states', createState);
 router.post('/districts', createDistrict);
