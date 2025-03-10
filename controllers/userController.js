@@ -42,13 +42,17 @@ const sendVerificationEmail = async (user) => {
         console.error('Error sending verification email:', error);
     }
 };
-
 exports.signup = async (req, res, next) => {
-    const { firstName, lastName, email, password, phone, city } = req.body;
+    const { firstName, lastName, email, password, confirmPassword, phone, city } = req.body;
 
     // Fast validation
-    if (!firstName || !lastName || !email || !password || !phone) {
+    if (!firstName || !lastName || !email || !password || !confirmPassword || !phone) {
         return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    // Check if passwords match
+    if (password !== confirmPassword) {
+        return res.status(400).json({ message: 'Passwords do not match' });
     }
 
     // Check for existing user
