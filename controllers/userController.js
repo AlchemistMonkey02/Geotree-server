@@ -345,20 +345,22 @@ exports.getPendingVerifications = async (req, res) => {
 
 // 📌 Login Controller
 exports.login = async (req, res, next) => {
-    const { email, password, rewardPoints } = req.body;
+    const { email, password } = req.body;
 
     // Validate input
-    if (!email || !password || rewardPoints === undefined) {
-        return res.status(400).json({ message: 'Email, password, and reward points are required.' });
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Email and password are required' });
     }
 
     try {
-        if (!email || !password) {
-            return res.status(400).json({ message: 'Email and password are required' });
-        }
-
         const user = await User.findOne({ email });
-        if (!user) return res.status(404).json({ message: 'User not found' });
+        if (!user) {
+            // User not found, return default rewardPoints of 0
+            return res.status(404).json({
+                message: 'User not found',
+                rewardPoints: 0 // Default value
+            });
+        }
 
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) return res.status(401).json({ message: 'Invalid password' });
@@ -387,7 +389,7 @@ exports.login = async (req, res, next) => {
                 role: user.role,
                 adminVerified: user.adminVerified,
                 adminVerificationStatus: user.adminVerificationStatus,
-                rewardPoints: user.rewardPoints
+                rewardPoints: user.rewardPoints || 0 // Ensure rewardPoints is returned
             }
         });
     } catch (err) {
