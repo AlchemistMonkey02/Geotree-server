@@ -3,7 +3,6 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const passport = require('passport');
 const { saveUserToTable, generateAccessToken, generateRefreshToken } = require('../utils/helpers');
 const AppError = require('../utils/AppError');
 const IndividualPlantation = require('../models/individualPlantationModel');
@@ -21,8 +20,8 @@ const transporter = nodemailer.createTransport({
 });
 
 // Ultra-minimal settings
-const SALT_ROUNDS = 4;  // Absolute minimum for basic security
-const TOKEN_LENGTH = 4; // Minimal token size
+const SALT_ROUNDS = 10;  // Increased for better security
+const TOKEN_LENGTH = 32; // Increased token size for better security
 
 // Non-blocking email verification
 const sendVerificationEmail = (user) => {
@@ -58,7 +57,7 @@ exports.signup = async (req, res, next) => {
         // Run all operations in parallel
         const [hashedPassword, existingUser] = await Promise.all([
             bcrypt.hash(password, SALT_ROUNDS),
-            User.findByEmail(email)
+            User.findOne({ email }) // Fixed method to find user by email
         ]);
 
         if (existingUser) {
@@ -76,17 +75,17 @@ exports.signup = async (req, res, next) => {
         });
 
         // Save and assign table in parallel
-        const [savedUser, tableData] = await Promise.all([
+        const [savedUser] = await Promise.all([
             user.save({ validateBeforeSave: true }),
             saveUserToTable(user)
         ]);
 
         // Use the centralized functions
-        generateAccessToken(savedUser._id, savedUser.role);
-        generateRefreshToken(savedUser._id);
+        const accessToken = generateAccessToken(savedUser._id, savedUser.role);
+        const refreshToken = generateRefreshToken(savedUser._id);
 
         // Minimal response
-        return res.status(201).json({ id: savedUser.userId });
+        return res.status(201).json({ id: savedUser.userId, accessToken, refreshToken });
 
     } catch (err) {
         next(new AppError('We encountered an issue during signup. Please try again later.', 400));
@@ -434,7 +433,7 @@ exports.resetPassword = async (req, res) => {
 
         if (!user) return res.status(400).json({ message: 'Invalid or expired reset token' });
 
-        user.password = await bcrypt.hash(newPassword, 10);
+        user.password = await bcrypt.hash(newPassword, SALT_ROUNDS); // Use SALT_ROUNDS for hashing
         user.resetPasswordToken = undefined;
         user.resetPasswordExpires = undefined;
         await user.save();
@@ -445,7 +444,6 @@ exports.resetPassword = async (req, res) => {
     }
 };
 
-// 📌 Verify User Function
 // 📌 Verify User Function
 exports.verifyUser = async (req, res) => {
     const { userId } = req.params;
@@ -514,12 +512,14 @@ exports.superAdminLogin = async (req, res) => {
     }
 };
 
-async function awardRewardPoints(userId) {
+// 📌 Award Reward Points Function
+exports.awardRewardPoints = async (req, res) => {
+    const { userId } = req.body;
     try {
         // Find the user
         const user = await User.findById(userId);
         if (!user) {
-            throw new Error('User not found');
+            return res.status(404).json({ message: 'User not found' });
         }
 
         // Find the user's individual plantations
@@ -534,16 +534,13 @@ async function awardRewardPoints(userId) {
         const totalPointsToAdd = individualPoints + blockPoints;
 
         // Update user's reward points
-        user.rewardPoints += totalPointsToAdd;
+        user.rewardPoints = (user.rewardPoints || 0) + totalPointsToAdd; // Ensure rewardPoints is initialized
         await user.save();
 
-        return user.rewardPoints; // Return updated points
+        return res.status(200).json({ rewardPoints: user.rewardPoints }); // Return updated points
     } catch (error) {
-        throw new Error(`Error awarding points: ${error.message}`);
+        console.error(`Error awarding points: ${error.message}`);
+        return res.status(500).json({ message: `Error awarding points: ${error.message}` });
     }
 }
 
-module.exports = {
-    // ... existing exports ...
-    awardRewardPoints,
-};

@@ -1,4 +1,4 @@
-const User = require("../models/User");
+const User = require("../models/userModel");
 
 const adminMiddleware = (req, res, next) => {
     const { role } = req.user; // Get role from the authenticated user
