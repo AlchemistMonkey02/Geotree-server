@@ -13,10 +13,6 @@ const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
     pool: true,
-    maxConnections: 20,
-    maxMessages: Infinity,
-    rateDelta: 100,
-    rateLimit: 20
 });
 
 // Ultra-minimal settings
@@ -24,16 +20,16 @@ const SALT_ROUNDS = 10;  // Increased for better security
 const TOKEN_LENGTH = 32; // Increased token size for better security
 
 // Non-blocking email verification
-const sendVerificationEmail = (user) => {
+const sendVerificationEmail = async (user) => {
     const token = crypto.randomBytes(TOKEN_LENGTH).toString('hex');
     const url = `${process.env.CLIENT_URL}/verify-email/${token}`;
 
     // Fire and forget all operations
-    setImmediate(() => {
-        Promise.all([
+    try {
+        await Promise.all([
             User.updateOne(
                 { _id: user._id },
-                { $set: { emailVerificationToken: token, emailVerificationExpires: new Date(Date.now() + 900000) } }
+                { $set: { emailVerificationToken: token, emailVerificationExpires: Date.now() + 900000 } }
             ),
             transporter.sendMail({
                 to: user.email,
@@ -41,9 +37,12 @@ const sendVerificationEmail = (user) => {
                 text: url,
                 from: process.env.EMAIL_USER
             })
-        ]).catch(() => {});
-    });
+        ]);
+    } catch (error) {
+        console.error('Error sending verification email:', error);
+    }
 };
+
 exports.signup = async (req, res, next) => {
     try {
         const { firstName, lastName, email, password, phone, city } = req.body;
@@ -73,7 +72,7 @@ exports.signup = async (req, res, next) => {
         });
 
         // Save user and assign to table
-        const savedUser = await user.save({ validateBeforeSave: true });
+        const savedUser = await user.save();
         await saveUserToTable(savedUser);
 
         // Generate tokens
@@ -185,7 +184,6 @@ exports.refreshToken = async (req, res) => {
     }
 };
 
-
 // 📌 Logout Controller
 exports.logout = async (req, res) => {
     try {
@@ -209,7 +207,6 @@ exports.logout = async (req, res) => {
     }
 };
 
-
 // 📌 OTP Verification Controller
 exports.verifyOTP = async (req, res) => {
     const { email, otp } = req.body;
@@ -223,7 +220,7 @@ exports.verifyOTP = async (req, res) => {
 
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        // Example: Check if OTP matches and is within a valid timeframe
+        // Check if OTP matches and is within a valid timeframe
         if (user.otp === otp && user.otpExpires > Date.now()) {
             user.otp = undefined; // Clear OTP after successful verification
             await user.save();
@@ -351,7 +348,6 @@ exports.login = async (req, res, next) => {
     try {
         const user = await User.findOne({ email });
         if (!user) {
-            // User not found, return default rewardPoints of 0
             return res.status(404).json({
                 message: 'User not found',
                 rewardPoints: 0 // Default value
@@ -389,7 +385,7 @@ exports.login = async (req, res, next) => {
             }
         });
     } catch (err) {
-        console.error('Login error:', err); // Log the error for debugging
+        console.error('Login error:', err);
         return res.status(500).json({
             status: 'error',
             message: 'We encountered an issue while logging you in. Please try again later.'
@@ -441,7 +437,7 @@ exports.resetPassword = async (req, res) => {
 
         if (!user) return res.status(400).json({ message: 'Invalid or expired reset token' });
 
-        user.password = await bcrypt.hash(newPassword, SALT_ROUNDS); // Use SALT_ROUNDS for hashing
+        user.password = await bcrypt.hash(newPassword, SALT_ROUNDS);
         user.resetPasswordToken = undefined;
         user.resetPasswordExpires = undefined;
         await user.save();
@@ -457,19 +453,17 @@ exports.verifyUser = async (req, res) => {
     const { userId } = req.params;
 
     try {
-        // Find the user by ID
         const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Update user verification status
         user.verified = true; // Assuming you have a `verified` field in your User model
         await user.save();
 
         return res.status(200).json({ message: 'User verified successfully' });
     } catch (error) {
-        console.error('Error verifying user:', error); // Log the error for debugging
+        console.error('Error verifying user:', error);
         return res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
@@ -524,31 +518,27 @@ exports.superAdminLogin = async (req, res) => {
 exports.awardRewardPoints = async (req, res) => {
     const { userId } = req.body;
     try {
-        // Find the user
         const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Find the user's individual plantations
-        const individualPlantations = await IndividualPlantation.find({ createdBy: userId });
-        const individualPoints = individualPlantations.reduce((total, plantation) => total + plantation.plants.length, 0);
+        const [individualPlantations, blockPlantations] = await Promise.all([
+            IndividualPlantation.find({ createdBy: userId }),
+            BlockPlantation.find({ createdBy: userId })
+        ]);
 
-        // Find the user's block plantations
-        const blockPlantations = await BlockPlantation.find({ createdBy: userId });
+        const individualPoints = individualPlantations.reduce((total, plantation) => total + plantation.plants.length, 0);
         const blockPoints = blockPlantations.reduce((total, plantation) => total + plantation.plants.length, 0);
 
-        // Calculate total points to add
         const totalPointsToAdd = individualPoints + blockPoints;
 
-        // Update user's reward points
-        user.rewardPoints = (user.rewardPoints || 0) + totalPointsToAdd; // Ensure rewardPoints is initialized
+        user.rewardPoints = (user.rewardPoints || 0) + totalPointsToAdd;
         await user.save();
 
-        return res.status(200).json({ rewardPoints: user.rewardPoints }); // Return updated points
+        return res.status(200).json({ rewardPoints: user.rewardPoints });
     } catch (error) {
         console.error(`Error awarding points: ${error.message}`);
         return res.status(500).json({ message: `Error awarding points: ${error.message}` });
     }
 }
-
