@@ -44,7 +44,8 @@ const sendVerificationEmail = async (user) => {
 };
 
 exports.signup = async (req, res, next) => {
-    const { firstName, lastName, email, password, confirmPassword, phone, city } = req.body;
+    const { fullName, email, password, confirmPassword, phone } = req.body;
+    const [firstName, lastName] = fullName.split(' '); // Split fullName into firstName and lastName
 
     // Fast validation
     if (!firstName || !lastName || !email || !password || !confirmPassword || !phone) {
@@ -78,7 +79,6 @@ exports.signup = async (req, res, next) => {
         email,
         password: hashedPassword,
         phone,
-        city
     });
 
     // Save user and assign to table
