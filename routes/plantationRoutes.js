@@ -52,7 +52,7 @@ router.use(authenticateToken);
 // Create plantation
 router.post(
     '/',
-    upload.array('photos', 5),
+    upload.array('photos', 2),
     createIndividualPlantation
 );
 
@@ -60,7 +60,7 @@ router.post(
 router.put(
     '/:id',
     authorizeRoles(['admin', 'department_user']),
-    upload.array('photos', 5),
+    upload.array('photos', 2),
     updateIndividualPlantation
 );
 

@@ -1,39 +1,44 @@
 const IndividualPlantation = require('../models/individualPlantationModel');
 const LandOwnership = require('../models/landOwnershipModel');
+const User = require('../models/userModel'); // Added missing User model import
 const { updateIndividualPlantationPoints } = require('./rewardController');
 
-// Create new individual plantation
+
 exports.createIndividualPlantation = async (req, res) => {
     try {
-        // Create land ownership record first
-        const landOwnershipData = {
-            ownershipType: req.body.landOwnership.ownershipType,
-            ownerName: req.body.landOwnership.ownerName,
-            landArea: req.body.landOwnership.landArea,
-            boundaries: {
-                type: 'Polygon',
-                coordinates: req.body.landOwnership.boundaries.coordinates
-            },
-            landUseType: req.body.landOwnership.landUseType
-        };
+        const { contactNumber, email, treeType, height, state, district, village, gramPanchayat, location, plantationDate, landOwnership } = req.body;
 
-        const landOwnership = new LandOwnership(landOwnershipData);
-        await landOwnership.save();
+        // Check if user exists, if not, register them
+        let user = await User.findOne({ phone: contactNumber });
+        if (!user) {
+            user = new User({ phone: contactNumber, email });
+            await user.save();
+        }
+
+        // Create land ownership record
+        const landOwnershipData = new LandOwnership({
+            ownershipType: landOwnership.ownershipType,
+            ownerName: landOwnership.ownerName,
+            landArea: landOwnership.landArea,
+            boundaries: landOwnership.boundaries,
+            landUseType: landOwnership.landUseType
+        });
+        await landOwnershipData.save();
 
         // Create plantation with land ownership reference
         const plantationData = {
-            treeType: req.body.treeType,
-            height: req.body.height,
-            state: req.body.state,
-            district: req.body.district,
-            village: req.body.village,
-            gramPanchayat: req.body.gramPanchayat,
-            landOwnership: landOwnership._id,
-            location: req.body.location,
-            plantationDate: req.body.plantationDate,
-            contactNumber: req.body.contactNumber,
-            email: req.body.email,
-            createdBy: req.user._id
+            treeType,
+            height,
+            state,
+            district,
+            village,
+            gramPanchayat,
+            landOwnership: landOwnershipData._id,
+            location,
+            plantationDate,
+            contactNumber,
+            email,
+            createdBy: user._id
         };
 
         // Handle file uploads if present
@@ -44,12 +49,12 @@ exports.createIndividualPlantation = async (req, res) => {
             }));
         }
 
-        // Validate that plantation location is within land boundaries
+        // Validate plantation location is within land boundaries
         const isWithinBoundaries = await LandOwnership.findOne({
-            _id: landOwnership._id,
+            _id: landOwnershipData._id,
             boundaries: {
                 $geoIntersects: {
-                    $geometry: plantationData.location
+                    $geometry: location
                 }
             }
         });
@@ -58,26 +63,29 @@ exports.createIndividualPlantation = async (req, res) => {
             throw new Error('Plantation location must be within the specified land boundaries');
         }
 
+        // Save plantation
         const plantation = new IndividualPlantation(plantationData);
         await plantation.save();
 
-        // Update reward points after saving the plantation
+        // Update reward points
         await updateIndividualPlantationPoints(plantation._id);
 
-        res.status(201).json({
+        return res.status(201).json({
             status: 'success',
             data: {
                 plantation,
-                landOwnership
+                landOwnership: landOwnershipData
             }
         });
+
     } catch (error) {
-        res.status(400).json({
+        return res.status(400).json({
             status: 'error',
             message: error.message
         });
     }
 };
+
 
 // Get all individual plantations with advanced filtering
 exports.getAllIndividualPlantations = async (req, res) => {

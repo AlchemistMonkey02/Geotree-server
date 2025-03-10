@@ -385,7 +385,11 @@ exports.login = async (req, res, next) => {
             }
         });
     } catch (err) {
-        next(new AppError('We encountered an issue while logging you in. Please try again later.', 500));
+        console.error('Login error:', err); // Log the error for debugging
+        return res.status(500).json({
+            status: 'error',
+            message: 'We encountered an issue while logging you in. Please try again later.'
+        });
     }
 };
 
