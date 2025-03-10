@@ -43,7 +43,12 @@ const userSchema = new mongoose.Schema({
     },
     city: String,
     emailVerificationToken: String,
-    emailVerificationExpires: Date
+    emailVerificationExpires: Date,
+    rewardPoints: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'RewardPoint', // Reference to the RewardPoint model
+        required: true // Ensure that reward points are always associated
+    }
 }, { 
     timestamps: true,
     minimize: true,

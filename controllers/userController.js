@@ -6,6 +6,8 @@ const nodemailer = require('nodemailer');
 const passport = require('passport');
 const { saveUserToTable, generateAccessToken, generateRefreshToken } = require('../utils/helpers');
 const AppError = require('../utils/AppError');
+const IndividualPlantation = require('../models/individualPlantationModel');
+const BlockPlantation = require('../models/blockPlantationModel');
 
 // Minimal email configuration
 const transporter = nodemailer.createTransport({
@@ -510,4 +512,38 @@ exports.superAdminLogin = async (req, res) => {
         console.error('Super admin login error:', err);
         res.status(500).json({ message: 'Error logging in', error: err.message });
     }
+};
+
+async function awardRewardPoints(userId) {
+    try {
+        // Find the user
+        const user = await User.findById(userId);
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        // Find the user's individual plantations
+        const individualPlantations = await IndividualPlantation.find({ createdBy: userId });
+        const individualPoints = individualPlantations.reduce((total, plantation) => total + plantation.plants.length, 0);
+
+        // Find the user's block plantations
+        const blockPlantations = await BlockPlantation.find({ createdBy: userId });
+        const blockPoints = blockPlantations.reduce((total, plantation) => total + plantation.plants.length, 0);
+
+        // Calculate total points to add
+        const totalPointsToAdd = individualPoints + blockPoints;
+
+        // Update user's reward points
+        user.rewardPoints += totalPointsToAdd;
+        await user.save();
+
+        return user.rewardPoints; // Return updated points
+    } catch (error) {
+        throw new Error(`Error awarding points: ${error.message}`);
+    }
+}
+
+module.exports = {
+    // ... existing exports ...
+    awardRewardPoints,
 };

@@ -7,13 +7,15 @@ const {
     verifyPlantation,
     downloadKML,
     updateBlockPlantation,
-    getDashboardStatistics
+    getDashboardStatistics,
+    getBlockPlantations
 } = require('../controllers/blockPlantationController');
 const { authenticateToken, authorizeRoles } = require('../middlewares/authMiddleware');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const BlockPlantation = require('../models/blockPlantationModel');
+const { awardRewardPoints } = require('../controllers/userController'); // Import the function to award points
 
 // Configure multer for image uploads
 const ensureDirectoryExists = (dir) => {
@@ -57,29 +59,26 @@ router.get('/all', authenticateToken, getAllBlockPlantations);
 router.post('/', authenticateToken, authorizeRoles('admin', 'organization'), uploadBlockPlantation.fields([
     { name: 'prePlantationImage', maxCount: 1 },
     { name: 'plantationImage', maxCount: 1 }
-]), createBlockPlantation);
+]), async (req, res) => {
+    try {
+        const plantation = await createBlockPlantation(req.body);
+        await awardRewardPoints(req.body.createdBy); // Award points to the user who created the plantation
+        res.status(201).json(plantation);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+});
 router.put('/:id', authenticateToken, authorizeRoles('admin', 'organization'), updateBlockPlantation);
 router.post('/:id/verify', authenticateToken, authorizeRoles('admin', 'verifier'), verifyPlantation);
 router.delete('/:id', authenticateToken, authorizeRoles('admin'), deleteBlockPlantation);
 
-// Create a new block plantation
-router.post('/', async (req, res) => {
-    try {
-        const blockPlantation = new BlockPlantation(req.body);
-        await blockPlantation.save();
-        res.status(201).json(blockPlantation);
-    } catch (err) {
-        res.status(400).json({ message: err.message });
-    }
-});
-
 // Get all block plantations
 router.get('/', async (req, res) => {
     try {
-        const blockPlantations = await BlockPlantation.find().populate('plants');
-        res.status(200).json(blockPlantations);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
+        const plantations = await getBlockPlantations();
+        res.status(200).json(plantations);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
 });
 

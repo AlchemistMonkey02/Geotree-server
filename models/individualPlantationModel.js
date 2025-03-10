@@ -105,12 +105,30 @@ const individualPlantationSchema = new mongoose.Schema({
     area: {
         type: Number,
         required: true
+    },
+    rewardpoints: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Rewardpoints',
+        required: false
     }
 });
 
 // Update timestamp before saving
-individualPlantationSchema.pre('save', function(next) {
+individualPlantationSchema.pre('save', async function(next) {
     this.updatedAt = Date.now();
+    
+    // Calculate reward points
+    const pointsToAdd = this.plants.length; // 1 plant = 1 point
+    if (this.rewardpoints) {
+        const RewardpointsModel = require('./RewardppointsModel').Rewardpoints;
+        const rewardEntry = await RewardpointsModel.findById(this.rewardpoints);
+        
+        if (rewardEntry) {
+            rewardEntry.points += pointsToAdd; // Add points
+            await rewardEntry.save(); // Save updated points
+        }
+    }
+    
     next();
 });
 

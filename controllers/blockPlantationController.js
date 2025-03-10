@@ -10,6 +10,7 @@ const path = require('path');
 const multer = require('multer');
 const Event = require('../models/eventModel');
 const Campaign = require('../models/campaignModel');
+const { updateBlockPlantationPoints } = require('./rewardController');
 
 // 📌 Ensure upload directory exists
 const ensureDirectoryExists = (dir) => {
@@ -121,6 +122,9 @@ exports.createBlockPlantation = async (req, res) => {
 
         const plantation = new BlockPlantation(plantationData);
         await plantation.save();
+
+        // Update reward points after saving the plantation
+        await updateBlockPlantationPoints(plantation._id);
 
         // Create activity log
         const activity = new Activity({
@@ -411,6 +415,9 @@ exports.verifyPlantation = async (req, res) => {
             });
         }
 
+        // Update reward points after updating the plantation
+        await updateBlockPlantationPoints(plantation._id);
+
         // Create verification activity
         const activity = new Activity({
             type: 'BLOCK_PLANTATION_VERIFIED',
@@ -531,61 +538,16 @@ exports.updateBlockPlantation = async (req, res) => {
                 message: 'Block plantation not found'
             });
         }
-        
-        // Handle tree species updates
-        if (updateData.treeSpecies) {
-            // Calculate total trees from species
-            const totalTreesFromSpecies = updateData.treeSpecies.reduce(
-                (sum, species) => sum + species.quantity, 0
-            );
-            
-            // Ensure total matches numberOfTrees
-            if (updateData.numberOfTrees && 
-                updateData.numberOfTrees !== totalTreesFromSpecies) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Total number of trees must match sum of tree species quantities'
-                });
-            }
-            
-            // If numberOfTrees not provided, update it
-            if (!updateData.numberOfTrees) {
-                updateData.numberOfTrees = totalTreesFromSpecies;
-            }
-        }
-        
-        // Handle boundaries update
-        if (updateData.boundaries && updateData.boundaries.coordinates) {
-            // Validate that the polygon is closed
-            const coordinates = updateData.boundaries.coordinates[0];
-            const firstPoint = coordinates[0];
-            const lastPoint = coordinates[coordinates.length - 1];
-            
-            if (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1]) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Polygon must be closed (first and last points must be the same)'
-                });
-            }
-        }
-        
+
         // Update the plantation
         const updatedPlantation = await BlockPlantation.findByIdAndUpdate(
             id,
             updateData,
             { new: true, runValidators: true }
         );
-        
-        // Log the activity
-        const activity = new Activity({
-            type: 'BLOCK_PLANTATION_UPDATED',
-            userId: req.user._id,
-            details: {
-                plantationId: id,
-                updates: Object.keys(updateData)
-            }
-        });
-        await activity.save();
+
+        // Update reward points after updating the plantation
+        await updateBlockPlantationPoints(updatedPlantation._id);
         
         res.status(200).json({
             status: 'success',

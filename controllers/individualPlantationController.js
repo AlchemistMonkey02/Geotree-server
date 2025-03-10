@@ -1,5 +1,6 @@
 const IndividualPlantation = require('../models/individualPlantationModel');
 const LandOwnership = require('../models/landOwnershipModel');
+const { updateIndividualPlantationPoints } = require('./rewardController');
 
 // Create new individual plantation
 exports.createIndividualPlantation = async (req, res) => {
@@ -60,6 +61,9 @@ exports.createIndividualPlantation = async (req, res) => {
         const plantation = new IndividualPlantation(plantationData);
         await plantation.save();
 
+        // Update reward points after saving the plantation
+        await updateIndividualPlantationPoints(plantation._id);
+
         res.status(201).json({
             status: 'success',
             data: {
@@ -99,6 +103,7 @@ exports.getAllIndividualPlantations = async (req, res) => {
             block,
             gramPanchayat,
             village,
+
             
             // Date filters
             startDate,
@@ -137,6 +142,7 @@ exports.getAllIndividualPlantations = async (req, res) => {
         if (block) filter.block = new RegExp(block, 'i');
         if (gramPanchayat) filter.gramPanchayat = new RegExp(gramPanchayat, 'i');
         if (village) filter.village = new RegExp(village, 'i');
+        
         
         // Date range filter
         if (startDate || endDate) {
@@ -294,6 +300,9 @@ exports.updateIndividualPlantation = async (req, res) => {
             { new: true, runValidators: true }
         ).populate('state district village gramPanchayat landOwnership createdBy verifiedBy');
 
+        // Update reward points after updating the plantation
+        await updateIndividualPlantationPoints(updatedPlantation._id);
+
         res.status(200).json({
             status: 'success',
             data: updatedPlantation
@@ -358,6 +367,9 @@ exports.verifyIndividualPlantation = async (req, res) => {
                 message: 'Individual plantation not found'
             });
         }
+
+        // Update reward points after verifying the plantation
+        await updateIndividualPlantationPoints(plantation._id);
 
         res.status(200).json({
             status: 'success',

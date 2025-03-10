@@ -1,26 +1,28 @@
 const express = require('express');
 const IndividualPlantation = require('../models/individualPlantationModel');
+const { createIndividualPlantation, getIndividualPlantations } = require('../controllers/individualPlantationController');
+const { awardRewardPoints } = require('../controllers/userController');
 
 const router = express.Router();
 
 // Create a new individual plantation
 router.post('/', async (req, res) => {
     try {
-        const individualPlantation = new IndividualPlantation(req.body);
-        await individualPlantation.save();
-        res.status(201).json(individualPlantation);
-    } catch (err) {
-        res.status(400).json({ message: err.message });
+        const plantation = await createIndividualPlantation(req.body);
+        await awardRewardPoints(req.body.createdBy);
+        res.status(201).json(plantation);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
     }
 });
 
 // Get all individual plantations
 router.get('/', async (req, res) => {
     try {
-        const individualPlantations = await IndividualPlantation.find().populate('plants');
-        res.status(200).json(individualPlantations);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
+        const plantations = await getIndividualPlantations();
+        res.status(200).json(plantations);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
 });
 

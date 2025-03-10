@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Organization = require('./organizationModel');
+const { Rewardpoints } = require('./RewardppointsModel');
 
 const treeSpeciesSchema = new mongoose.Schema({
     name: {
@@ -38,6 +39,11 @@ const blockPlantationSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'GramPanchayat',
         required: [true, 'Gram Panchayat is required']
+    },
+    Rewardpoints: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Rewardpoints',
+        required: false
     },
     department: {
         type: mongoose.Schema.Types.ObjectId,
@@ -204,9 +210,22 @@ const blockPlantationSchema = new mongoose.Schema({
     }
 });
 
-// Update timestamp on save
-blockPlantationSchema.pre('save', function(next) {
+// Update reward points based on number of trees planted
+blockPlantationSchema.pre('save', async function(next) {
     this.updatedAt = Date.now();
+    
+    // Calculate reward points
+    const pointsToAdd = this.numberOfTrees; // 1 plant = 1 point
+    if (this.Rewardpoints) {
+        const RewardpointsModel = require('./RewardppointsModel').Rewardpoints;
+        const rewardEntry = await RewardpointsModel.findById(this.Rewardpoints);
+        
+        if (rewardEntry) {
+            rewardEntry.points += pointsToAdd; // Add points
+            await rewardEntry.save(); // Save updated points
+        }
+    }
+    
     next();
 });
 
