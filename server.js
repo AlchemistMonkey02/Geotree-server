@@ -172,54 +172,54 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
-// ✅ Port Management
-const DEFAULT_PORT = 6068;
-// const HOST = "0.0.0.0"; // Allows external access
+// // ✅ Port Management
+// const DEFAULT_PORT = 6068;
+// // const HOST = "0.0.0.0"; // Allows external access
 
-/**
- * Function to find an available port
- * @param {number} startPort - Starting port to check
- * @param {number} maxAttempts - Maximum number of ports to try
- * @returns {Promise<number>}
- */
-const findAvailablePort = (startPort = DEFAULT_PORT, maxAttempts = 10) => {
-  return new Promise((resolve, reject) => {
-    let attempts = 0;
+// /**
+//  * Function to find an available port
+//  * @param {number} startPort - Starting port to check
+//  * @param {number} maxAttempts - Maximum number of ports to try
+//  * @returns {Promise<number>}
+//  */
+// const findAvailablePort = (startPort = DEFAULT_PORT, maxAttempts = 10) => {
+//   return new Promise((resolve, reject) => {
+//     let attempts = 0;
 
-    const checkPort = (port) => {
-      const server = net.createServer();
+//     const checkPort = (port) => {
+//       const server = net.createServer();
 
-      server.once("error", (err) => {
-        if (err.code === "EADDRINUSE" && attempts < maxAttempts) {
-          attempts++;
-          checkPort(port + 1);
-        } else {
-          reject(new Error("No available ports found!"));
-        }
-      });
+//       server.once("error", (err) => {
+//         if (err.code === "EADDRINUSE" && attempts < maxAttempts) {
+//           attempts++;
+//           checkPort(port + 1);
+//         } else {
+//           reject(new Error("No available ports found!"));
+//         }
+//       });
 
-      server.once("listening", () => {
-        server.close(() => resolve(port));
-      });
+//       server.once("listening", () => {
+//         server.close(() => resolve(port));
+//       });
 
-      server.listen(port);
-    };
+//       server.listen(port);
+//     };
 
-    checkPort(startPort);
-  });
-};
+//     checkPort(startPort);
+//   });
+// };
 
-// Start the server on an available port
-(async () => {
-  try {
-    const port = await findAvailablePort(DEFAULT_PORT);
-    app.listen(port, HOST, () => {
-      console.log(`🌍 Server running on http://${HOST}:${port}`);
-    });
-  } catch (error) {
-    console.error("❌ Failed to start server:", error.message);
-  }
-})();
+// // Start the server on an available port
+// (async () => {
+//   try {
+//     const port = await findAvailablePort(DEFAULT_PORT);
+//     app.listen(port, HOST, () => {
+//       console.log(`🌍 Server running on http://${HOST}:${port}`);
+//     });
+//   } catch (error) {
+//     console.error("❌ Failed to start server:", error.message);
+//   }
+// })();
 
 const PORT = process.env.PORT || 5000;
 

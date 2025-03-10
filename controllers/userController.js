@@ -44,7 +44,6 @@ const sendVerificationEmail = (user) => {
         ]).catch(() => {});
     });
 };
-
 exports.signup = async (req, res, next) => {
     try {
         const { firstName, lastName, email, password, phone, city } = req.body;
@@ -54,17 +53,16 @@ exports.signup = async (req, res, next) => {
             return res.status(400).json({ message: 'Missing required fields' });
         }
 
-        // Run all operations in parallel
-        const [hashedPassword, existingUser] = await Promise.all([
-            bcrypt.hash(password, SALT_ROUNDS),
-            User.findOne({ email }) // Fixed method to find user by email
-        ]);
-
+        // Check for existing user
+        const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({ message: 'Email exists' });
         }
 
-        // Create minimal user
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+        // Create new user
         const user = new User({
             firstName,
             lastName,
@@ -74,21 +72,19 @@ exports.signup = async (req, res, next) => {
             city
         });
 
-        // Save and assign table in parallel
-        const [savedUser] = await Promise.all([
-            user.save({ validateBeforeSave: true }),
-            saveUserToTable(user)
-        ]);
+        // Save user and assign to table
+        const savedUser = await user.save({ validateBeforeSave: true });
+        await saveUserToTable(savedUser);
 
-        // Use the centralized functions
+        // Generate tokens
         const accessToken = generateAccessToken(savedUser._id, savedUser.role);
         const refreshToken = generateRefreshToken(savedUser._id);
 
-        // Minimal response
+        // Respond with user data and tokens
         return res.status(201).json({ id: savedUser.userId, accessToken, refreshToken });
 
     } catch (err) {
-        next(new AppError('We encountered an issue during signup. Please try again later.', 400));
+        next(new AppError(err, 'We encountered an issue during signup. Please try again later.', 400));
     }
 };
 
