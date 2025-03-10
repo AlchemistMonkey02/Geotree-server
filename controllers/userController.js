@@ -42,6 +42,7 @@ const sendVerificationEmail = async (user) => {
         console.error('Error sending verification email:', error);
     }
 };
+
 exports.signup = async (req, res, next) => {
     const { firstName, lastName, email, password, confirmPassword, phone, city } = req.body;
 
@@ -55,10 +56,16 @@ exports.signup = async (req, res, next) => {
         return res.status(400).json({ message: 'Passwords do not match' });
     }
 
-    // Check for existing user
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
+    // Check for existing user by email
+    const existingUserByEmail = await User.findOne({ email });
+    if (existingUserByEmail) {
         return res.status(400).json({ message: 'Email exists' });
+    }
+
+    // Check for existing user by phone
+    const existingUserByPhone = await User.findOne({ phone });
+    if (existingUserByPhone) {
+        return res.status(400).json({ message: 'Phone number already exists' });
     }
 
     // Hash password
@@ -75,15 +82,23 @@ exports.signup = async (req, res, next) => {
     });
 
     // Save user and assign to table
-    const savedUser = await user.save();
-    await saveUserToTable(savedUser);
+    try {
+        const savedUser = await user.save();
+        await saveUserToTable(savedUser);
 
-    // Generate tokens
-    const accessToken = generateAccessToken(savedUser._id, savedUser.role);
-    const refreshToken = generateRefreshToken(savedUser._id);
+        // Generate tokens
+        const accessToken = generateAccessToken(savedUser._id, savedUser.role);
+        const refreshToken = generateRefreshToken(savedUser._id);
 
-    // Respond with user data and tokens
-    return res.status(201).json({ id: savedUser.userId, accessToken, refreshToken });
+        // Respond with user data and tokens
+        return res.status(201).json({ id: savedUser.userId, accessToken, refreshToken });
+    } catch (error) {
+        if (error.code === 11000) {
+            const duplicateKey = Object.keys(error.keyValue)[0];
+            return res.status(400).json({ message: `Duplicate key error: ${duplicateKey} already exists` });
+        }
+        return next(new AppError('Error saving user', 500));
+    }
 };
 
 // 📌 Verify Email Controller
