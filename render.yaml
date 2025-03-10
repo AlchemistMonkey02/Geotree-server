@@ -1,0 +1,37 @@
+# Exported from Render on 2025-03-10T06:33:04Z
+services:
+- type: web
+  name: Geotree-server
+  runtime: node
+  repo: https://github.com/AlchemistMonkey02/Geotree-server
+  branch: development
+  plan: free
+  envVars:
+  - key: NODE_ENV
+    sync: false
+  - key: REFRESH_TOKEN_SECRET
+    sync: false
+  - key: FRONTEND_URL
+    sync: false
+  - key: EMAIL_PASS
+    sync: false
+  - key: EMAIL_USER
+    sync: false
+  - key: GOOGLE_CALLBACK_URL
+    sync: false
+  - key: ACCESS_TOKEN_SECRET
+    sync: false
+  - key: GOOGLE_CLIENT_SECRET
+    sync: false
+  - key: GOOGLE_CLIENT_ID
+    sync: false
+  - key: ADMIN_PASSWORD
+    sync: false
+  - key: ADMIN_EMAIL
+    sync: false
+  - key: MONGO_URI
+    sync: false
+  region: oregon
+  buildCommand: yarn
+  startCommand: yarn start
+version: "1"
