@@ -174,7 +174,7 @@ process.on("uncaughtException", (error) => {
 
 // ✅ Port Management
 const DEFAULT_PORT = 6068;
-const HOST = "0.0.0.0"; // Allows external access
+// const HOST = "0.0.0.0"; // Allows external access
 
 /**
  * Function to find an available port

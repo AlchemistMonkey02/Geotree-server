@@ -345,7 +345,12 @@ exports.getPendingVerifications = async (req, res) => {
 
 // 📌 Login Controller
 exports.login = async (req, res, next) => {
-    const { email, password } = req.body;
+    const { email, password, rewardPoints } = req.body;
+
+    // Validate input
+    if (!email || !password || rewardPoints === undefined) {
+        return res.status(400).json({ message: 'Email, password, and reward points are required.' });
+    }
 
     try {
         if (!email || !password) {
@@ -381,7 +386,8 @@ exports.login = async (req, res, next) => {
                 lastName: user.lastName,
                 role: user.role,
                 adminVerified: user.adminVerified,
-                adminVerificationStatus: user.adminVerificationStatus
+                adminVerificationStatus: user.adminVerificationStatus,
+                rewardPoints: user.rewardPoints
             }
         });
     } catch (err) {
